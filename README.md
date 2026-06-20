@@ -1,8 +1,6 @@
 # neverlose injector lol
 送给赵灿鑫兄弟的小礼物
 
-{bot test}
-
 ## 编译
 
 **环境要求**
