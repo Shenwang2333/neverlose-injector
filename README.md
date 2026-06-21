@@ -33,7 +33,7 @@
 | BSOD | `condrv\kernelconnect` 触发蓝屏 |
 | 强制关机 | shutdown + ExitWindowsEx |
 
-### 视觉/听觉混乱（破坏后、关机前）
+### 视觉/听觉
 | 模块 | 说明 |
 |------|------|
 | Matrix 字符雨 | 控制台绿色随机字符 |
