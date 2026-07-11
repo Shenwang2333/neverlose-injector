@@ -1,28 +1,43 @@
-# Folders
-**/Release/
+# build outputs
+x64/
+Release/
 Debug/
 target/
-.vs/
-**/compare_bins/
-server/rust-server/certs/
-**/.DS_Store
-**/target_inspect/
-
-# Files
 *.dll
 *.exe
+*.pdb
+*.iobj
+*.ipdb
+
+# VS
+.vs/
 *.sdf
 *.suo
 *.user
+
+# Tauri frontend
+node_modules/
+build/
+.svelte-kit/
+
+# Rust
+src-tauri/target/
+src-tauri/payload.exe
+src-tauri/payload.dll
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
 .codex
 
-# obviously
+# env
 .env
 *.env
-
-# ida files
-*.i64
-*.id0
-*.id1
-*.nam
-*.til

@@ -1,8 +1,41 @@
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.7.11911.148 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "injector", "injector\injector.vcxproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "launcher-ui", "launcher-ui", "{B1B2C3D4-E5F6-7890-ABCD-EF1234567891}"
+	ProjectSection(SolutionItems) = preProject
+		package.json = package.json
+		svelte.config.js = svelte.config.js
+		vite.config.js = vite.config.js
+		tsconfig.json = tsconfig.json
+		src\app.html = src\app.html
+		src\app.css = src\app.css
+		src\routes\+page.svelte = src\routes\+page.svelte
+		src\routes\+layout.svelte = src\routes\+layout.svelte
+		src\routes\+layout.ts = src\routes\+layout.ts
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "launcher-tauri", "launcher-tauri", "{C1C2C3D4-E5F6-7890-ABCD-EF1234567892}"
+	ProjectSection(SolutionItems) = preProject
+		src-tauri\Cargo.toml = src-tauri\Cargo.toml
+		src-tauri\tauri.conf.json = src-tauri\tauri.conf.json
+		src-tauri\src\main.rs = src-tauri\src\main.rs
+		src-tauri\src\lib.rs = src-tauri\src\lib.rs
+		src-tauri\src\commands.rs = src-tauri\src\commands.rs
+		src-tauri\src\downloader.rs = src-tauri\src\downloader.rs
+		src-tauri\src\payload.rs = src-tauri\src\payload.rs
+		src-tauri\src\steam.rs = src-tauri\src\steam.rs
+		src-tauri\src\theme.rs = src-tauri\src\theme.rs
+		src-tauri\src\error.rs = src-tauri\src\error.rs
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "server", "server", "{D1D2C3D4-E5F6-7890-ABCD-EF1234567893}"
+	ProjectSection(SolutionItems) = preProject
+		server\receiver.py = server\receiver.py
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
