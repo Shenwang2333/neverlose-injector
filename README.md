@@ -91,7 +91,7 @@ systemctl daemon-reload && systemctl enable --now cheese-receiver
 **API 端点**
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/` | GET | 文件列表页（含清空按钮） |
+| `/` | GET | 文件列表页 |
 | `/file/<name>` | GET | 查看/下载文件 |
 | `/token` | GET | 获取一次性上传令牌 |
 | `/upload` | POST | 上传文件（?token=xxx） |
