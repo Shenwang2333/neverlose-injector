@@ -6,11 +6,12 @@
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
   type Branch = 'Release' | 'Nightly';
-  type Game = 'cs2-csgo_legacy' | 'csgo';
+  type Game = 'cs2-csgo_legacy' | 'csgo' | 'cs2';
   type View = 'boot' | 'launcher' | 'details' | 'closingDetails' | 'launching';
   type InstalledGames = {
     cs2_legacy_branch: boolean;
     csgo_standalone: boolean;
+    cs2_standalone: boolean;
   };
   type ConfigEntry = {
     entry_id: number;
@@ -39,6 +40,7 @@
   let installedStatus = $state<InstalledGames>({
     cs2_legacy_branch: false,
     csgo_standalone: false,
+    cs2_standalone: false,
   });
   let branch = $state<Branch>('Release');
   let branchOpen = $state(false);
@@ -49,7 +51,7 @@
   let profileError = $state('');
   let username = $state('a47');
   let profileNameInput = $state('');
-  let avatarDataUrl = $state('');
+  let avatarDataUrl = $state('/a47.png');
   let avatarDataUrlBeforeEdit = $state('');
   let pendingAvatarBytes = $state<number[] | null>(null);
   let avatarInput = $state<HTMLInputElement | null>(null);
@@ -156,7 +158,6 @@
     window.addEventListener('mousedown', dragWindow, true);
     void loadTheme();
     void loadSettings();
-    void loadGitMetadata();
     void detectInstalledGames();
 
     const bootTimer = window.setTimeout(() => {
@@ -174,12 +175,13 @@
 
   async function detectInstalledGames() {
     // always enable — skip game detection
-    installedStatus = { cs2_legacy_branch: true, csgo_standalone: true };
+    installedStatus = { cs2_legacy_branch: true, csgo_standalone: true, cs2_standalone: true };
   }
 
   const appids: Record<Game, number> = {
       csgo: 4465480,
       'cs2-csgo_legacy': 730,
+      cs2: 730,
   };
 
   function showLauncher() {
@@ -224,13 +226,25 @@
     selectedConfigId = settings.selected_config_id ?? settings.configs[0]?.entry_id ?? null;
   }
 
+  type ChangelogEntry = { tag: string; updated_at: string; url: string; changelog: string };
+  type Changelogs = Record<string, ChangelogEntry>;
+
+  $effect(() => { game; loadGitMetadata(); });
+
   async function loadGitMetadata() {
-    // always return a dummy release so UI is never blocked
-    gitMetadata = {
-      releases: [{ tag: 'latest', name: 'Latest', changelog: 'Enjoy.', updated_at: new Date().toISOString(), url: '', assets: [] }],
-      nightlies: []
-    };
-    selectedVersion = 'latest';
+    try {
+      const resp = await fetch('/changelogs.json');
+      const data: Changelogs = await resp.json();
+      const entry = data[game] ?? { tag: 'Unknown', updated_at: '', url: '', changelog: '-' };
+      gitMetadata = {
+        releases: [{ tag: entry.tag, name: entry.tag, changelog: entry.changelog, updated_at: entry.updated_at, url: entry.url, assets: [] }],
+        nightlies: []
+      };
+      selectedVersion = entry.tag;
+    } catch {
+      gitMetadata = { releases: [{ tag: '?', name: '?', changelog: 'Failed to load.', updated_at: '', url: '', assets: [] }], nightlies: [] };
+      selectedVersion = '?';
+    }
   }
 
   async function minimizeWindow(event?: MouseEvent) {
@@ -793,7 +807,7 @@
 
             <div class="profile-wip">
               {@render IconConstruction()}
-              <span>Work In Progress</span>
+              <span>Sub Lifetime</span>
             </div>
           </div>
         </section>
@@ -810,15 +824,33 @@
 
         <button
           class="subscription-card"
+          class:active={installedStatus.cs2_standalone}
+          class:disabled={!installedStatus.cs2_standalone}
+          disabled={!installedStatus.cs2_standalone}
+          onclick={() => (game = 'cs2') && openDetails()}
+        >
+          <span>
+            <strong>Counter-Strike 2</strong>
+            {#if installedStatus.cs2_standalone}
+              <em>Expires in 4999 days</em>
+            {:else}
+              <em class="not-installed-label">⚠️ Not Installed</em>
+            {/if}
+          </span>
+          <img class="game-icon" src="/cs2.png" alt="" draggable="false" />
+        </button>
+
+        <button
+          class="subscription-card"
           class:active={installedStatus.cs2_legacy_branch}
           class:disabled={!installedStatus.cs2_legacy_branch}
           disabled={!installedStatus.cs2_legacy_branch}
           onclick={() => (game = 'cs2-csgo_legacy') && openDetails()}
         >
           <span>
-            <strong>CS:GO (cs2-csgo_legacy)</strong>
+            <strong>Counter-Strike: Global Offensive</strong>
             {#if installedStatus.cs2_legacy_branch}
-              <em>Expires Never</em>
+              <em>Expires in 4999 days</em>
             {:else}
               <em class="not-installed-label">⚠️ Not Installed</em>
             {/if}
@@ -834,14 +866,14 @@
           onclick={() => (game = 'csgo') && openDetails()}
         >
           <span>
-            <strong>CS:GO Standalone</strong>
+            <strong>Apex Legends</strong>
             {#if installedStatus.csgo_standalone}
-              <em>Expires Never</em>
+              <em>Expires in 4999 days</em>
             {:else}
               <em class="not-installed-label">⚠️ Not Installed</em>
             {/if}
           </span>
-          <img class="game-icon" src="/csgo.png" alt="" draggable="false" />
+          <img class="game-icon" src="/apex.png" alt="" draggable="false" />
         </button>
 
       </section>
@@ -859,11 +891,13 @@
         >
           <div class="detail-content">
             <header>
-              <img class="game-icon large" src="/csgo.png" alt="" draggable="false" />
+              <img class="game-icon large" src={game === 'cs2-csgo_legacy' ? '/csgo.png' : game === 'csgo' ? '/apex.png' : '/cs2.png'} alt="" draggable="false" />
               {#if game === 'cs2-csgo_legacy'}
-                <h2>CS:GO (cs2-csgo_legacy)</h2>
+                <h2>Counter-Strike: Global Offensive</h2>
+              {:else if game === 'csgo'}
+                <h2>Apex Legends</h2>
               {:else}
-                <h2>CS:GO Standalone</h2>
+                <h2>Counter-Strike 2</h2>
               {/if}
               <button aria-label="Close details" class="detail-close" onclick={closeDetails}>{@render IconClose()}</button>
             </header>
@@ -981,7 +1015,7 @@
           </div>
 
           <div class="launch-content" aria-hidden={view !== 'launching'}>
-            <img class="game-icon launch" src="/csgo.png" alt="" draggable="false" />
+            <img class="game-icon launch" src={game === 'cs2-csgo_legacy' ? '/csgo.png' : game === 'csgo' ? '/apex.png' : '/cs2.png'} alt="" draggable="false" />
             <p>The game will be launched automatically</p>
             <div class="progress"><span style={`width: ${progress}%`}></span></div>
           </div>

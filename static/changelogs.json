@@ -1,0 +1,20 @@
+{
+  "cs2": {
+    "tag": "v1.1.7",
+    "updated_at": "2024-09-03T22:32:58Z",
+    "url": "",
+    "changelog": "- Improved «Hit Chance»\n- Improved «Multipoint»\n- Improved overall Rage Aimbot accuracy.\n- Added «Force Lethal In Air» feature. It forces a lethal minimum damage until the targeted player hits the ground."
+  },
+  "cs2-csgo_legacy": {
+    "tag": "v3.8.0",
+    "updated_at": "2026-07-11T09:12:03Z",
+    "url": "",
+    "changelog": "- luas that worked before now work again\n- wapi lib is removed because i find it unecessary and dangerous. just comment it out of any lua and it'll work fine\n- got rid of all warnings in nl build process\n- removed some 'closure' libraries that were included in the original library leak that i got from stefan/daniel, they look hella weird idk\n- restored build.rs so libraries would build into the binary properly. i forgot that did something\n- fixed duplicate entries"
+  },
+  "csgo": {
+    "tag": "v2.3.1",
+    "updated_at": "2026-06-12T00:00:00Z",
+    "url": "",
+    "changelog": "- Improved Rage Aimbot accuracy"
+  }
+}
