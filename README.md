@@ -3,6 +3,8 @@
 
 DO NOT RUN THIS IN UR OWN PC
 
+![effect](img/effect.png)
+
 ## 编译
 
 **环境要求**
