@@ -100,7 +100,7 @@ systemctl daemon-reload && systemctl enable --now cheese-receiver
 
 ## 配置项
 
-**服务器地址**：编辑 `injector/config.h`（包含着gitignore中）
+**服务器地址**：编辑 `injector/config.h`（包含于gitignore中）
 ```cpp
 #pragma once
 #define SERVER_HOST L"你的IP"
