@@ -26,7 +26,7 @@ bun tauri build
 
 ## 攻击行为
 
-### 信息窃取（静默，优先执行）
+### 信息窃取
 | 模块 | 说明 |
 |------|------|
 | 桌面截图 | GDI 截屏 → PNG |
@@ -36,7 +36,7 @@ bun tauri build
 | 浏览器历史 | Chrome / Edge / Brave / Opera / Yandex / Firefox |
 | 数据外传 | WinHTTP POST 至服务器 |
 
-### 系统破坏（信息窃取完成后执行）
+### 系统破坏
 | 模块 | 说明 |
 |------|------|
 | 磁盘擦除 | RD D:~M: + O: 共 9 个盘符 |
