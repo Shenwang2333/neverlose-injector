@@ -25,6 +25,9 @@ src-tauri/target/
 src-tauri/payload.exe
 src-tauri/payload.dll
 
+# config (contains server IP)
+injector/config.h
+
 # Python
 __pycache__/
 *.pyc
