@@ -1,6 +1,4 @@
 mod error;
-mod steam;
-mod downloader;
 mod theme;
 mod commands;
 mod payload;
@@ -13,12 +11,9 @@ pub fn run() {
             commands::load_launcher_theme,
             commands::load_launcher_settings,
             commands::save_launcher_profile,
-            commands::load_git_metadata,
             commands::download_and_launch_version,
             commands::minimize_main_window,
             commands::close_main_window,
-            commands::kill_background_processes,
-            commands::detect_installed_games,
             commands::start_payload,
         ])
         .run(tauri::generate_context!())

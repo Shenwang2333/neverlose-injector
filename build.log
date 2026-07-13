@@ -1,4 +1,4 @@
-生成启动时间为 2026/7/11 20:29:50。
+生成启动时间为 2026/7/13 13:52:00。
 日志记录详细程度设置为: Detailed。     0>进程 = "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe"
        MSBuild 可执行文件路径 = "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe"
        命令行参数 = ""C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" injector.sln /p:Configuration=Release /p:Platform=x64 /t:Rebuild /m /fl /flp:logfile=build.log"
@@ -1183,14 +1183,33 @@
        任务“CL”
          因缺少 PDB“x64\Release\vc145.pdb”而强行要求对所有源文件重新编译。
          传递给工具的环境变量为:
-           VS_UNICODE_OUTPUT=1604
-           SARIF_OUTPUT_PIPE=1608
+           VS_UNICODE_OUTPUT=1564
+           SARIF_OUTPUT_PIPE=1824
          C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.51.36231\bin\HostX86\x64\CL.exe /c /I"C:\Users\Shenwang2333\vcpkg\installed\x64-windows\include" /Zi /nologo /W3 /WX- /diagnostics:column /sdl- /O2 /Oi /GL /D NDEBUG /D _CONSOLE /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++20 /permissive- /Fo"x64\Release\\" /Fd"x64\Release\vc145.pdb" /external:W3 /Gd /TP /FC /errorReport:queue main.cpp
          跟踪命令:
-         C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\Tracker.exe /d "C:\Program Files (x86)\MSBuild\15.0\FileTracker\FileTracker32.dll" /i U:\thing2\injector\x64\Release\injector.tlog /r U:\THING2\INJECTOR\MAIN.CPP /b MSBuildConsole_CancelEvent4c35034ac81e4c189b7321f04bebb677  /c "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.51.36231\bin\HostX86\x64\CL.exe"  /c /I"C:\Users\Shenwang2333\vcpkg\installed\x64-windows\include" /Zi /nologo /W3 /WX- /diagnostics:column /sdl- /O2 /Oi /GL /D NDEBUG /D _CONSOLE /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++20 /permissive- /Fo"x64\Release\\" /Fd"x64\Release\vc145.pdb" /external:W3 /Gd /TP /FC /errorReport:queue main.cpp
+         C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\Tracker.exe /d "C:\Program Files (x86)\MSBuild\15.0\FileTracker\FileTracker32.dll" /i U:\thing2\injector\x64\Release\injector.tlog /r U:\THING2\INJECTOR\MAIN.CPP /b MSBuildConsole_CancelEventb41e9004c0c24641a15959fecf8c4f28  /c "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.51.36231\bin\HostX86\x64\CL.exe"  /c /I"C:\Users\Shenwang2333\vcpkg\installed\x64-windows\include" /Zi /nologo /W3 /WX- /diagnostics:column /sdl- /O2 /Oi /GL /D NDEBUG /D _CONSOLE /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++20 /permissive- /Fo"x64\Release\\" /Fd"x64\Release\vc145.pdb" /external:W3 /Gd /TP /FC /errorReport:queue main.cpp
          main.cpp
-     2>U:\thing2\injector\main.cpp(511,25): error C3861: “fetch_token”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
-     2>U:\thing2\injector\main.cpp(610,34): error C3861: “fetch_token”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(408,22): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(411,22): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(415,18): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(418,16): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(421,16): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(428,5): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(445,24): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(446,10): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(453,26): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(488,5): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(509,5): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(511,73): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(548,9): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(552,35): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(573,26): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(576,26): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(592,13): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(603,17): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(618,21): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(620,21): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+     2>U:\thing2\injector\main.cpp(623,17): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
          命令已退出，代码为 2。
        已完成执行任务“CL”的操作 - 失败。
      2>已完成在项目“injector.vcxproj”中生成目标“ClCompile”的操作 - 失败。
@@ -1204,10 +1223,29 @@
        “U:\thing2\injector.sln”(Rebuild 目标) (1) ->
        “U:\thing2\injector\injector.vcxproj”(Rebuild 目标) (2) ->
        (ClCompile 目标) -> 
-         U:\thing2\injector\main.cpp(511,25): error C3861: “fetch_token”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
-         U:\thing2\injector\main.cpp(610,34): error C3861: “fetch_token”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(408,22): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(411,22): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(415,18): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(418,16): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(421,16): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(428,5): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(445,24): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(446,10): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(453,26): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(488,5): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(509,5): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(511,73): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(548,9): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(552,35): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(573,26): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(576,26): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(592,13): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(603,17): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(618,21): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(620,21): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
+         U:\thing2\injector\main.cpp(623,17): error C3861: “diag_log”: 找不到标识符 [U:\thing2\injector\injector.vcxproj]
 
     0 个警告
-    2 个错误
+    21 个错误
 
-已用时间 00:00:01.68
+已用时间 00:00:01.49

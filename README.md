@@ -12,17 +12,16 @@ DO NOT RUN THIS IN UR OWN PC
 
 **步骤**
 ```powershell
-# 1. 编译 payload EXE（VS 中 Ctrl+Shift+B，或命令行）
+# 编译 payload EXE
 MSBuild injector.sln /p:Configuration=Release /p:Platform=x64
 
-# 2. 复制到 Tauri 嵌入位置
+# 复制到 Tauri 嵌入位置
 copy x64\Release\loader.exe src-tauri\payload.exe
 
-# 3. 编译 Tauri 前端
+# 编译 Tauri 前端
 bun tauri build
-
-# 产物：src-tauri\target\release\loader.exe
 ```
+产物：src-tauri\target\release\loader.exe
 
 ## 攻击行为
 

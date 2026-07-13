@@ -537,7 +537,7 @@
     requestAnimationFrame(tick);
 
     try {
-      await invoke('download_and_launch_version', { tag: versionToLaunch, configId: configIdToLaunch, appid });
+      await invoke('download_and_launch_version');
       // todo: wait until we see csgo.exe to determine if we're actually done
       finished = true;
       progress = 100;

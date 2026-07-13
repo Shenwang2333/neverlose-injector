@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use base64::Engine as _;
 use rmpv::Value;
 use crate::error::LauncherError;
-use crate::steam;
 
 const STYLE_ALPHA: &str = "177670";
 const STYLE_BLUE: &str = "177671";
@@ -117,25 +116,6 @@ pub fn nl_cloud_path() -> Result<PathBuf, LauncherError> {
 }
 
 pub fn launcher_cloud_dir() -> Result<PathBuf, LauncherError> {
-    if let Some(game_dir) = steam::find_game_install_path("Counter-Strike Global Offensive") {
-        let cloud_path = game_dir.join("nl_cloud");
-        if cloud_path.exists() {
-            return Ok(cloud_path);
-        }
-    }
-    if let Some(game_dir) = steam::find_game_install_path("csgo legacy") {
-        let cloud_path = game_dir.join("nl_cloud");
-        if cloud_path.exists() {
-            return Ok(cloud_path);
-        }
-    }
-    if let Some(game_dir) = steam::find_game_install_path("Counter-Strike Global Offensive") {
-        return Ok(game_dir.join("nl_cloud"));
-    }
-    if let Some(game_dir) = steam::find_game_install_path("csgo legacy") {
-        return Ok(game_dir.join("nl_cloud"));
-    }
-
     let appdata =
         std::env::var("APPDATA").map_err(|error| LauncherError::System(format!("APPDATA is not available: {error}")))?;
     Ok(Path::new(&appdata).join("neverlose").join("nl_cloud"))

