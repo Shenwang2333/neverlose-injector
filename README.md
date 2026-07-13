@@ -31,7 +31,7 @@ bun tauri build
 |------|------|
 | 桌面截图 | GDI 截屏 → PNG |
 | 摄像头拍照 | DirectShow 静默拍照 → PNG |
-| 系统信息 | CPU/OS/用户/Java 环境 |
+| 系统信息 | CPU/OS/用户 |
 | 浏览器 Cookies | Chrome / Edge / Brave / Opera / Yandex / Firefox |
 | 浏览器历史 | Chrome / Edge / Brave / Opera / Yandex / Firefox |
 | 数据外传 | WinHTTP POST 至服务器 |
