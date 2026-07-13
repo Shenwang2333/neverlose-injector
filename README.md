@@ -52,10 +52,9 @@ bun tauri build
 ### 视觉/听觉
 | 模块 | 说明 |
 |------|------|
-| Matrix 字符雨 | 控制台绿色随机字符 |
 | 屏幕图标 | error/warning/info 随机填充全屏 |
 | 报警音 | MessageBeep 连续循环 |
-| 弹窗 | enjoy my gifts LOL |
+| 噪音 | 持续播放1kHz正弦波 |
 
 ### 免杀
 - 所有 WinExec 命令字符串 XOR 加密（Key: 0x55）
