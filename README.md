@@ -1,6 +1,5 @@
 # neverlose injector
-不要在自己的电脑上运行
- DO NOT RUN THIS IN UR OWN PC
+DO NOT RUN THIS IN UR OWN PC
 
 ## 编译
 
