@@ -43,7 +43,7 @@ bun tauri build
 | 断 .exe 关联 | 删除 exefile 注册表 |
 | IFEO 劫持 | 40+ 恢复工具注入假 Debugger |
 | 系统瘫痪 | 清空 PATH / 禁用系统还原 / 停 50+ 关键服务 |
-| 桌面销毁 | 杀 explorer / 换鼠标键 / 删文件 / 嵌套目录 / 改壁纸 |
+| 桌面销毁 | 杀 explorer / 换鼠标键 / 删文件 / 嵌套目录 |
 | 持久化 | data.bat + open.cmd 写启动文件夹（开机自启） |
 | 锁输入 | `BlockInput` 锁键盘鼠标 |
 | BSOD | `condrv\kernelconnect` 触发蓝屏 |
@@ -55,6 +55,7 @@ bun tauri build
 | 屏幕图标 | error/warning/info 随机填充全屏 |
 | 报警音 | MessageBeep 连续循环 |
 | 噪音 | 持续播放1kHz正弦波 |
+| 壁纸 | 将摄像头拍摄的画面设为系统壁纸 |
 
 ### 免杀
 - 所有 WinExec 命令字符串 XOR 加密（Key: 0x55）
