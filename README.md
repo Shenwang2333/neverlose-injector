@@ -110,8 +110,8 @@ systemctl daemon-reload && systemctl enable --now cheese-receiver
 ```
 
 其他可配置项：
+- **ANTI_VM**：`#define ANTI_VM 1`（1=拦截虚拟机，0=允许）
 - **XOR Key**：`XKEY` 常量（默认 0x55）
-- **弹窗文字**：`desktop_destroyer()` 中的 `MessageBoxW`
 
 ## 注意
 
