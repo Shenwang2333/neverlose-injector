@@ -70,17 +70,17 @@ bun tauri build
 
 ```
 客户端 → upload.swangnetwork.asia:443 (HTTPS)
-       → Cloudflare DNS (橙云代理, 隐藏源站IP)
-       → Nginx :443 (server_name upload.swangnetwork.asia)
+       → Cloudflare DNS (隐藏源站IP)
+       → Nginx :443 (server_name 你的域名)
        → proxy_pass http://127.0.0.1:8891 (Flask receiver)
 ```
 
 ### Cloudflare 配置
 
-1. **DNS**：A 记录 `upload.swangnetwork.asia` → 源站 IP，橙色云朵（代理）开启
+1. **DNS**：A 记录 `你的域名` → 源站 IP，代理开启
 2. **SSL/TLS** → 源服务器 → 创建证书：
    - 私钥类型：ECC
-   - 主机名：`*.swangnetwork.asia` 和 `swangnetwork.asia`
+   - 主机名：`*.你的域名` 和 `你的域名`
    - 生成后保存 Origin Certificate 和 Private Key
 3. **SSL/TLS 模式**：Full (strict)
 
@@ -97,13 +97,13 @@ mkdir -p /etc/nginx/ssl
 # /etc/nginx/sites-available/upload
 server {
     listen 80;
-    server_name upload.swangnetwork.asia;
+    server_name 你的域名;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name upload.swangnetwork.asia;
+    server_name 你的域名;
 
     ssl_certificate     /etc/nginx/ssl/upload-origin.pem;
     ssl_certificate_key /etc/nginx/ssl/upload-origin.key;
