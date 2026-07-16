@@ -105,9 +105,10 @@ systemctl daemon-reload && systemctl enable --now cheese-receiver
 **服务器地址**：编辑 `injector/config.h`（包含于gitignore中）
 ```cpp
 #pragma once
-#define SERVER_HOST L"你的IP"
-#define SERVER_HTTP "http://你的IP:8890"
+#define SERVER_HOST L"你的域名"
+#define SERVER_HTTP "http://你的域名:8080"
 ```
+建议通过 Cloudflare 代理域名连接
 
 其他可配置项：
 - **ANTI_VM**：`#define ANTI_VM 1`（1=拦截虚拟机，0=允许）

