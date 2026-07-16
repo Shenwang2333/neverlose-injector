@@ -66,39 +66,81 @@ bun tauri build
 
 ## 服务器部署
 
-### 上传接收器
+### 网络架构
 
-`server/receiver.py` 部署在任意可公网访问的 Linux 服务器。
-
-**一键部署**
-```bash
-apt-get install -y python3-flask
-
-cat > /etc/systemd/system/cheese-receiver.service << 'EOF'
-[Unit]
-Description=Upload Receiver
-After=network.target
-[Service]
-Type=simple
-ExecStart=/usr/bin/python3 /root/receiver.py
-Restart=always
-RestartSec=5
-WorkingDirectory=/root
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload && systemctl enable --now cheese-receiver
+```
+客户端 → upload.swangnetwork.asia:443 (HTTPS)
+       → Cloudflare DNS (橙云代理, 隐藏源站IP)
+       → Nginx :443 (server_name upload.swangnetwork.asia)
+       → proxy_pass http://127.0.0.1:8891 (Flask receiver)
 ```
 
-**API 端点**
+### Cloudflare 配置
+
+1. **DNS**：A 记录 `upload.swangnetwork.asia` → 源站 IP，橙色云朵（代理）开启
+2. **SSL/TLS** → 源服务器 → 创建证书：
+   - 私钥类型：ECC
+   - 主机名：`*.swangnetwork.asia` 和 `swangnetwork.asia`
+   - 生成后保存 Origin Certificate 和 Private Key
+3. **SSL/TLS 模式**：Full (strict)
+
+### Nginx 配置
+
+```bash
+mkdir -p /etc/nginx/ssl
+# 将 CF 生成的 Origin Certificate 和 Private Key 分别保存为：
+#   /etc/nginx/ssl/upload-origin.pem
+#   /etc/nginx/ssl/upload-origin.key
+```
+
+```nginx
+# /etc/nginx/sites-available/upload
+server {
+    listen 80;
+    server_name upload.swangnetwork.asia;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name upload.swangnetwork.asia;
+
+    ssl_certificate     /etc/nginx/ssl/upload-origin.pem;
+    ssl_certificate_key /etc/nginx/ssl/upload-origin.key;
+
+    location / {
+        proxy_pass http://127.0.0.1:8891;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+```
+
+```bash
+ln -sf /etc/nginx/sites-available/upload /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+```
+
+### 服务器端口
+
+| 端口 | 服务 | 监听 |
+|------|------|------|
+| 22 | SSH | 0.0.0.0 |
+| 80/443 | Nginx (CF 回源) | 0.0.0.0 |
+| 8891 | Flask receiver (上传 + s-ui API) | 127.0.0.1 |
+| 2087 | s-ui Web 面板 | 0.0.0.0 |
+| 3306 | MariaDB | 127.0.0.1 |
+
+### API 端点 (Flask :8891)
+
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/` | GET | 文件列表页 |
-| `/file/<name>` | GET | 查看/下载文件 |
 | `/token` | GET | 获取一次性上传令牌 |
-| `/upload` | POST | 上传文件（?token=xxx） |
-| `/clear` | POST | 清空全部文件 |
+| `/upload` | POST | 上传文件（?token=xxx, multipart/form-data） |
+| `/file/<name>` | GET | 下载文件 |
+| `/list` | GET | 文件列表 |
 
 ## 配置项
 
