@@ -1,7 +1,9 @@
 # neverlose injector
 ![overview](img/screenshot.png)
 
-DO NOT RUN THIS IN UR OWN PC
+DO NOT RUN THIS IN UR OWN PC 
+![overview](img/dc.png)
+OR U WILL LIKE THIS GUY :p
 
 ## 编译
 
