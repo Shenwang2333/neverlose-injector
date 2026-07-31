@@ -48,6 +48,8 @@
   let configOpen = $state(false);
   let profileOpen = $state(false);
   let profileSaving = $state(false);
+  let themeOpen = $state(false);
+  let currentTheme = $state(1); // 0=Blue, 1=Black, 2=Light
   let profileError = $state('');
   let username = $state('a47');
   let profileNameInput = $state('');
@@ -195,11 +197,52 @@
 
     try {
       const theme = await invoke<LauncherTheme>('load_launcher_theme');
-      themeVariables = Object.entries(theme.variables)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join('; ');
+      applyTheme(theme);
     } catch (error) {
       console.warn('Failed to load launcher theme', error);
+    }
+  }
+
+  function toggleTheme(event: MouseEvent) {
+    event.stopPropagation();
+    themeOpen = !themeOpen;
+  }
+
+  async function selectTheme(styleId: number) {
+    themeOpen = false;
+    if (await switchTheme(styleId)) {
+      currentTheme = styleId;
+    }
+  }
+
+  async function switchTheme(styleId: number): Promise<boolean> {
+    if (!hasTauriRuntime()) {
+      return true;
+    }
+
+    try {
+      const theme = await invoke<LauncherTheme>('set_launcher_style', { styleId });
+      applyTheme(theme);
+      return true;
+    } catch (error) {
+      console.warn('Failed to switch theme', error);
+      return false;
+    }
+  }
+
+  function applyTheme(theme: LauncherTheme) {
+    themeVariables = Object.entries(theme.variables)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join('; ');
+
+    const builtInThemeIds: Record<string, number> = {
+      'built-in Blue style': 0,
+      'built-in Black style': 1,
+      'built-in Light style': 2
+    };
+    const builtInThemeId = builtInThemeIds[theme.source];
+    if (builtInThemeId !== undefined) {
+      currentTheme = builtInThemeId;
     }
   }
 
@@ -562,6 +605,7 @@
     branchOpen = false;
     versionOpen = false;
     configOpen = false;
+    themeOpen = false;
     if (profileOpen && pendingAvatarBytes) {
       avatarDataUrl = avatarDataUrlBeforeEdit;
       pendingAvatarBytes = null;
@@ -694,19 +738,6 @@
   </svg>
 {/snippet}
 
-{#snippet IconConstruction()}
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <rect x="2" y="6" width="20" height="8" rx="1" />
-    <path d="M17 14v7" />
-    <path d="M7 14v7" />
-    <path d="M17 3v3" />
-    <path d="M7 3v3" />
-    <path d="M10 14 2.3 6.3" />
-    <path d="M14 6l8 8" />
-    <path d="M8 6l8 8" />
-  </svg>
-{/snippet}
-
 <svelte:head>
   <title>Neverlose Launcher</title>
 </svelte:head>
@@ -805,9 +836,21 @@
               </div>
             {/if}
 
-            <div class="profile-wip">
-              {@render IconConstruction()}
-              <span>Sub Lifetime</span>
+            <div class="theme-row">
+              <span>Theme</span>
+              <div class="theme-toggle-wrap">
+                <button class="theme-trigger" class:active={themeOpen} onclick={toggleTheme}>
+                  <span class="theme-dot" class:blue={currentTheme === 0} class:black={currentTheme === 1} class:light={currentTheme === 2}></span>
+                  {@render IconChevron()}
+                </button>
+                {#if themeOpen}
+                  <div class="theme-menu">
+                    <button class:selected={currentTheme === 0} onclick={() => selectTheme(0)}>Blue</button>
+                    <button class:selected={currentTheme === 1} onclick={() => selectTheme(1)}>Black</button>
+                    <button class:selected={currentTheme === 2} onclick={() => selectTheme(2)}>Light</button>
+                  </div>
+                {/if}
+              </div>
             </div>
           </div>
         </section>
@@ -1340,17 +1383,47 @@
     color: var(--nl-button-active-text);
   }
 
-  .profile-wip {
-    @apply absolute inset-x-0 bottom-2 flex items-center justify-center gap-2 text-[12px] font-light text-[var(--nl-small-text)];
+  .theme-row {
+    @apply absolute inset-x-0 bottom-2 flex items-center justify-between px-4;
   }
 
-  .profile-wip svg {
-    @apply size-[15px];
-    fill: none;
-    stroke: currentColor;
+  .theme-row span {
+    @apply text-[11px] font-light text-[var(--nl-small-text)];
+  }
+
+  .theme-toggle-wrap {
+    @apply relative;
+  }
+
+  .theme-trigger {
+    @apply inline-flex h-[26px] w-[48px] items-center justify-center gap-[3px] rounded-md text-[13px] text-[var(--nl-button-active-text)];
+    cursor: pointer;
+  }
+
+  .theme-trigger svg {
+    @apply size-[13px];
     stroke-width: 1.8;
     stroke-linecap: round;
     stroke-linejoin: round;
+    transition: transform 180ms ease-in-out;
+  }
+
+  .theme-trigger.active svg {
+    transform: rotate(180deg);
+  }
+
+  .theme-dot {
+    @apply block size-[10px] rounded-full;
+    background: var(--nl-button);
+  }
+
+  .theme-dot.black { background: var(--nl-active-text); }
+  .theme-dot.light { background: var(--nl-text-preview); }
+
+  .theme-menu {
+    @apply bottom-full right-0 mb-[6px] pt-[5px];
+    width: 82px;
+    transform-origin: right bottom;
   }
 
 
@@ -1739,12 +1812,16 @@
     @apply inline-flex h-7 items-center justify-center rounded-md text-[13px] font-light text-[var(--nl-button-active-text)];
   }
 
-  .branch-trigger {
-    width: 32px;
+  .branch-trigger,
+  .theme-trigger {
     border: 1px solid color-mix(in srgb, var(--nl-border), var(--nl-text) 14%);
     background: transparent;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nl-border), transparent 35%);
     transition: background 130ms ease-in-out, border-color 130ms ease-in-out, box-shadow 130ms ease-in-out;
+  }
+
+  .branch-trigger {
+    width: 32px;
   }
 
   .branch-trigger svg {
@@ -1754,13 +1831,15 @@
     stroke-linejoin: round;
   }
 
-  .branch-trigger:hover {
+  .branch-trigger:hover,
+  .theme-trigger:hover {
     border-color: transparent;
     box-shadow: inset 0 0 0 1px transparent;
     background: color-mix(in srgb, var(--nl-button-active), transparent 50%);
   }
 
-  .branch-trigger.active {
+  .branch-trigger.active,
+  .theme-trigger.active {
     border-color: transparent;
     box-shadow: inset 0 0 0 1px transparent;
     background: var(--nl-button);
@@ -1789,8 +1868,9 @@
     @apply pointer-events-none opacity-[0.55];
   }
 
-  .branch-menu {
-    @apply absolute left-[34px] top-[-34px] z-30 h-[66px] w-[122px] overflow-hidden rounded-md pt-2;
+  .branch-menu,
+  .theme-menu {
+    @apply absolute z-30 overflow-hidden rounded-md;
     border: 1px solid color-mix(in srgb, var(--nl-button-active), transparent 84%);
     background: color-mix(in srgb, var(--nl-popup-bg), transparent 28%);
     box-shadow:
@@ -1798,18 +1878,29 @@
       inset 0 0 0 1px color-mix(in srgb, var(--nl-button-active), transparent 95%),
       0 12px 30px var(--nl-shadow-soft);
     backdrop-filter: blur(9px);
-    transform-origin: left bottom;
     animation: menu-in 190ms ease-in-out both;
   }
 
-  .branch-menu button {
+  .branch-menu {
+    @apply left-[34px] top-[-34px] h-[66px] w-[122px] pt-2;
+    transform-origin: left bottom;
+  }
+
+  .branch-menu button,
+  .theme-menu button {
     @apply relative isolate mx-0 grid h-[29px] w-full items-center rounded-none border-0 bg-transparent py-0 pr-0 pl-[14px] text-left text-sm font-thin text-[var(--nl-text-preview)];
     grid-template-columns: 24px 1fr;
     column-gap: 11px;
     transition: background 130ms ease-in-out, color 130ms ease-in-out, text-shadow 130ms ease-in-out;
   }
 
-  .branch-menu button::before {
+  .theme-menu button {
+    grid-template-columns: 1fr;
+    column-gap: 0;
+  }
+
+  .branch-menu button::before,
+  .theme-menu button::before {
     @apply pointer-events-none absolute inset-y-0 left-2 right-2 z-[-1] rounded-[5px] opacity-0;
     content: "";
     background: var(--nl-selection);
@@ -1826,28 +1917,35 @@
     -webkit-mask: url("/git-branch.svg") center / contain no-repeat;
   }
 
-  .branch-menu button:hover {
+  .branch-menu button:hover,
+  .theme-menu button:hover {
     color: var(--nl-active-text);
     background: transparent;
     text-shadow: 0 0 10px color-mix(in srgb, var(--nl-active-text), transparent 86%);
   }
 
-  .branch-menu button:hover::before {
+  .branch-menu button:hover::before,
+  .theme-menu button:hover::before {
     @apply opacity-50;
   }
 
-  .branch-menu button:active {
+  .branch-menu button:active,
+  .theme-menu button:active {
     color: var(--nl-active-text);
   }
 
   .branch-menu .selected,
-  .branch-menu .selected:hover {
+  .branch-menu .selected:hover,
+  .theme-menu .selected,
+  .theme-menu .selected:hover {
     color: var(--nl-active-text);
     text-shadow: none;
   }
 
   .branch-menu button:active::before,
-  .branch-menu .selected:active::before {
+  .branch-menu .selected:active::before,
+  .theme-menu button:active::before,
+  .theme-menu .selected:active::before {
     @apply opacity-100;
   }
 

@@ -9,6 +9,11 @@ pub async fn load_launcher_theme() -> Result<theme::LauncherTheme, LauncherError
 }
 
 #[tauri::command]
+pub async fn set_launcher_style(style_id: i32) -> Result<theme::LauncherTheme, LauncherError> {
+    theme::set_launcher_style(style_id).await
+}
+
+#[tauri::command]
 pub fn minimize_main_window(app: AppHandle) -> Result<(), LauncherError> {
     let window = app
         .get_webview_window("main")

@@ -9,6 +9,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::load_launcher_theme,
+            commands::set_launcher_style,
             commands::load_launcher_settings,
             commands::save_launcher_profile,
             commands::download_and_launch_version,

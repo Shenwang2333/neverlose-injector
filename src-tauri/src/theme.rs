@@ -1,8 +1,9 @@
 use std::collections::HashMap;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use base64::Engine as _;
 use rmpv::Value;
+use serde::{Deserialize, Serialize};
 use crate::error::LauncherError;
 
 const STYLE_ALPHA: &str = "177670";
@@ -17,7 +18,7 @@ const BUILTIN_STYLE_BLUE: &str = include_str!("../builtin-styles/Blue.style");
 const BUILTIN_STYLE_BLACK: &str = include_str!("../builtin-styles/Black.style");
 const BUILTIN_STYLE_LIGHT: &str = include_str!("../builtin-styles/Light.style");
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct CloudState {
     #[serde(default)]
     pub username: String,
@@ -25,7 +26,9 @@ pub struct CloudState {
     pub type7_blob: Option<String>,
     #[serde(default)]
     pub last_loaded_config_id: Option<i32>,
+    #[serde(default)]
     pub last_loaded_style_id: Option<i32>,
+    #[serde(default)]
     pub log: Vec<LogEntry>,
 }
 
@@ -54,22 +57,23 @@ pub struct LauncherTheme {
 pub async fn load_launcher_theme() -> Result<LauncherTheme, LauncherError> {
     let cloud = nl_cloud_path()?;
     let state_path = cloud.join("state.json");
-    let state_text = tokio::fs::read_to_string(&state_path)
-        .await
-        .map_err(|error| LauncherError::Io(format!("failed to read {}: {error}", state_path.display())))?;
-    let state: CloudState = serde_json::from_str(&state_text)
-        .map_err(|error| LauncherError::SerdeJson(format!("failed to parse {}: {error}", state_path.display())))?;
+    let state = read_cloud_state(&state_path).await?;
 
     let style_id = state
         .type7_blob
         .as_deref()
         .and_then(extract_style_id_from_type7)
-        .or(state.last_loaded_style_id);
+        .or(state.last_loaded_style_id)
+        .unwrap_or(1); // default to Black
 
-    let Some(style_id) = style_id else {
-        return Ok(default_theme("built-in style"));
-    };
+    load_theme_for_style(&cloud, &state, style_id).await
+}
 
+async fn load_theme_for_style(
+    cloud: &Path,
+    state: &CloudState,
+    style_id: i32,
+) -> Result<LauncherTheme, LauncherError> {
     if let Some((name, style_text)) = builtin_style(style_id) {
         let colors = decode_style_colors(style_text)?;
         return Ok(LauncherTheme {
@@ -100,6 +104,19 @@ pub async fn load_launcher_theme() -> Result<LauncherTheme, LauncherError> {
     })
 }
 
+async fn read_cloud_state(state_path: &Path) -> Result<CloudState, LauncherError> {
+    match tokio::fs::read_to_string(state_path).await {
+        Ok(text) => serde_json::from_str(&text).map_err(|error| {
+            LauncherError::SerdeJson(format!("failed to parse {}: {error}", state_path.display()))
+        }),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(CloudState::default()),
+        Err(error) => Err(LauncherError::Io(format!(
+            "failed to read {}: {error}",
+            state_path.display()
+        ))),
+    }
+}
+
 pub fn default_theme(source: &str) -> LauncherTheme {
     LauncherTheme {
         source: source.to_string(),
@@ -113,6 +130,49 @@ pub fn nl_cloud_path() -> Result<PathBuf, LauncherError> {
     }
 
     launcher_cloud_dir()
+}
+
+pub async fn set_launcher_style(style_id: i32) -> Result<LauncherTheme, LauncherError> {
+    let cloud = nl_cloud_path()?;
+    tokio::fs::create_dir_all(&cloud).await.map_err(|error| {
+        LauncherError::Io(format!("failed to create {}: {error}", cloud.display()))
+    })?;
+    let state_path = cloud.join("state.json");
+
+    let mut state_value: serde_json::Value = match tokio::fs::read_to_string(&state_path).await {
+        Ok(text) => serde_json::from_str(&text).map_err(|error| {
+            LauncherError::SerdeJson(format!("failed to parse {}: {error}", state_path.display()))
+        })?,
+        Err(error) if error.kind() == ErrorKind::NotFound => serde_json::json!({}),
+        Err(error) => {
+            return Err(LauncherError::Io(format!(
+                "failed to read {}: {error}",
+                state_path.display()
+            )));
+        }
+    };
+    let Some(state_object) = state_value.as_object_mut() else {
+        return Err(LauncherError::Validation(
+            "state.json root was not an object".to_string(),
+        ));
+    };
+    state_object.insert(
+        "last_loaded_style_id".to_string(),
+        serde_json::Value::Number(style_id.into()),
+    );
+    let next = serde_json::to_string_pretty(&state_value).map_err(|error| {
+        LauncherError::SerdeJson(format!(
+            "failed to serialize {}: {error}",
+            state_path.display()
+        ))
+    })?;
+    tokio::fs::write(&state_path, next).await.map_err(|error| {
+        LauncherError::Io(format!("failed to write {}: {error}", state_path.display()))
+    })?;
+    let state: CloudState = serde_json::from_value(state_value).map_err(|error| {
+        LauncherError::SerdeJson(format!("failed to parse {}: {error}", state_path.display()))
+    })?;
+    load_theme_for_style(&cloud, &state, style_id).await
 }
 
 pub fn launcher_cloud_dir() -> Result<PathBuf, LauncherError> {
